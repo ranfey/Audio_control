@@ -9,6 +9,8 @@
 #include <QDebug>
 #include <shellapi.h>
 #include <shlobj.h>
+#include <QGraphicsOpacityEffect>
+#include <QWheelEvent>
 
 MainWindow::MainWindow(QSettings *settings , QWidget *parent)
     : QMainWindow(parent)
@@ -18,6 +20,13 @@ MainWindow::MainWindow(QSettings *settings , QWidget *parent)
     ui->setupUi(this);
 
     // 读取设置
+    int rowHeight = m_settings->value("Style/RowHeight", 90).toInt();
+    int rowWidth  = m_settings->value("Style/RowWidth", 200).toInt();
+    int maxHeight = m_settings->value("Style/MaxWindowHeight", 300).toInt();
+    this->rowHeight = rowHeight;
+    this->rowWidth = rowWidth;
+    this->maxWindowHeight = maxHeight;
+    //退出状态
     m_settings->beginGroup("MainWindow");
     restoreGeometry(m_settings->value("geometry").toByteArray());
     restoreState(m_settings->value("windowState").toByteArray());
@@ -30,12 +39,14 @@ MainWindow::MainWindow(QSettings *settings , QWidget *parent)
         Qt::WindowStaysOnBottomHint
     );
 
-    setAttribute(Qt::WA_TranslucentBackground, true);//透明窗口
+    setAttribute(Qt::WA_TranslucentBackground);//透明窗口
+
+    QPalette palette = QPalette();
+    palette.setColor(QPalette::Background, QColor(100,100,100,2));//伪造透明阻止鼠标穿透，傻逼完了
+    setPalette(palette);
 
     enumerateAudioSessions();//动态构建音量合成器
-
-    adjustSize();  // 自动调整窗口大小
-
+    
     show();  // 初始显示
 }
 
@@ -133,6 +144,8 @@ void MainWindow::enumerateAudioSessions()
 
         // 创建 UI 行
         createSessionRow(pid, volume);
+        reflowSessionLayout();
+
 
         ctrl2->Release();
         ctrl->Release();
@@ -150,25 +163,49 @@ void MainWindow::enumerateAudioSessions()
 void MainWindow::createSessionRow(DWORD pid, ISimpleAudioVolume* volume)
 {
     QWidget* row = new QWidget;
-
-    // 不要 setFixedHeight
-    row->setMinimumHeight(48);   // Win10 行高
+    row->setMinimumHeight(rowHeight);
+    row->setAttribute(Qt::WA_TranslucentBackground);
+    row->setStyleSheet(R"(background: transparent;)");
 
     QHBoxLayout* layout = new QHBoxLayout(row);
     layout->setContentsMargins(10, 6, 10, 6);
-    layout->setSpacing(12);
-
-    /* -------- 图标 -------- */
-    QLabel* icon = new QLabel;
-    icon->setFixedSize(32, 32);
-    icon->setPixmap(getAppIcon(pid));
-    icon->setScaledContents(true);
-    layout->setAlignment(icon, Qt::AlignVCenter);
+    layout->setSpacing(8);
 
     /* -------- 音量条 -------- */
     QSlider* slider = new QSlider(Qt::Horizontal);
     slider->setRange(0, 100);
-    slider->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    slider->setInvertedAppearance(true);  // 视觉反转
+    slider->setInvertedControls(false);   // 滚轮方向正常
+
+    slider->setMinimumWidth(rowWidth);
+    slider->setFixedHeight(32);
+
+    slider->setStyleSheet(R"(
+        QSlider {
+            background: transparent;
+        }
+        QSlider::groove:horizontal {
+            height: 8px;
+            background: #ffe4f0;
+            border-radius: 4px;
+        }
+        QSlider::handle:horizontal {
+            width: 20px;
+            height: 20px;
+            background: #ff77aa;
+            border: 2px solid white;
+            margin: -8px 0;
+            border-radius: 10px;
+        }
+        QSlider::sub-page:horizontal {
+            background: #eee;
+            border-radius: 4px;
+        }
+        QSlider::add-page:horizontal {
+            background: #ffb6d5;
+            border-radius: 4px;
+        }
+    )");
 
     float vol = 0.0f;
     volume->GetMasterVolume(&vol);
@@ -180,52 +217,70 @@ void MainWindow::createSessionRow(DWORD pid, ISimpleAudioVolume* volume)
         }
     );
 
-    layout->addWidget(icon);
-    layout->addWidget(slider, 1);
+    /* -------- 获取图标 -------- */
+    QPixmap iconPixmap;
+    {
+        HANDLE hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+        if (hProc) {
+            wchar_t exePath[MAX_PATH] = {};
+            DWORD size = MAX_PATH;
+            if (QueryFullProcessImageNameW(hProc, 0, exePath, &size)) {
+                SHFILEINFOW info{};
+                if (SHGetFileInfoW(
+                        exePath,
+                        0,
+                        &info,
+                        sizeof(info),
+                        SHGFI_ICON | SHGFI_LARGEICON))  // 使用大图标
+                {
+                    iconPixmap = QtWin::fromHICON(info.hIcon);
+                    DestroyIcon(info.hIcon);
+                }
+            }
+            CloseHandle(hProc);
+        }
+    }
 
+    QLabel* icon = new QLabel;
+    icon->setObjectName("sessionIcon");
+    icon->setFixedSize(64, 64);
+    icon->setPixmap(iconPixmap);
+    icon->setScaledContents(true);
+    icon->setStyleSheet(R"(
+        QLabel#sessionIcon {
+            background: transparent;
+            border-radius: 4px;
+            padding: 2px;
+            border: 2px solid transparent;
+        }
+
+        QLabel#sessionIcon:hover {
+            border: 2px solid #ffaad4;
+        }
+
+    )");
+
+    layout->addWidget(slider, 1);
+    layout->addWidget(icon);
+    ui->scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    ui->scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     ui->sessionLayout->addWidget(row);
 }
 
-
-/* =========================================================
- * PID → exe 路径
- * ========================================================= */
-QString MainWindow::getProcessPath(DWORD pid)
+void MainWindow::reflowSessionLayout()
 {
-    HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-    if (!h) return {};
+    int count = ui->sessionLayout->count();
+    int totalHeight = count * rowHeight + 12;
 
-    wchar_t buffer[MAX_PATH];
-    DWORD size = MAX_PATH;
-    QueryFullProcessImageNameW(h, 0, buffer, &size);
-    CloseHandle(h);
+    int actualHeight = qMin(totalHeight, maxWindowHeight);
+    int windowWidth = rowWidth *2;
 
-    return QString::fromWCharArray(buffer);
-}
+    this->setFixedSize(windowWidth, actualHeight);
 
-/* =========================================================
- * exe → Win10 同源应用图标
- * ========================================================= */
-QPixmap MainWindow::getAppIcon(DWORD pid)
-{
-    QString path = getProcessPath(pid);
-    if (path.isEmpty())
-        return QPixmap();
-
-    SHFILEINFOW info{};
-    if (!SHGetFileInfoW(
-            (LPCWSTR)path.utf16(),
-            0,
-            &info,
-            sizeof(info),
-            SHGFI_ICON | SHGFI_SMALLICON))
-    {
-        return QPixmap();
+    // 若使用 QScrollArea，可同步更新高度限制：
+    if (ui->scrollArea) {
+        ui->sessionContainer->setFixedHeight(totalHeight);
+        ui->scrollArea->setFixedHeight(actualHeight);
     }
 
-    // ✅ Qt5 正确：QtWinExtras
-    QPixmap pix = QtWin::fromHICON(info.hIcon);
-
-    DestroyIcon(info.hIcon);
-    return pix;
 }

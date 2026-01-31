@@ -2,30 +2,32 @@
 <ui version="4.0">
  <class>MainWindow</class>
  <widget class="QMainWindow" name="MainWindow">
-  <property name="geometry">
-   <rect>
-    <x>0</x>
-    <y>0</y>
-    <width>4095</width>
-    <height>4095</height>
-   </rect>
+  <property name="windowTitle">
+   <string>Audio Control</string>
   </property>
   <widget class="QWidget" name="centralwidget">
+   <!-- <property name="styleSheet">
+    <string notr="true">background: transparent;</string>
+   </property> -->
    <layout class="QVBoxLayout" name="mainLayout">
     <item>
      <widget class="QScrollArea" name="scrollArea">
+      <!-- <property name="styleSheet">
+       <string notr="true">
+        background: transparent;
+        border: none;
+       </string>
+      </property> -->
+      <property name="frameShape">
+       <enum>QFrame::NoFrame</enum>
+      </property>
       <property name="widgetResizable">
        <bool>true</bool>
       </property>
       <widget class="QWidget" name="sessionContainer">
-       <property name="geometry">
-        <rect>
-         <x>0</x>
-         <y>0</y>
-         <width>4071</width>
-         <height>4071</height>
-        </rect>
-       </property>
+       <!-- <property name="styleSheet">
+        <string notr="true">background: transparent;</string>
+       </property> -->
        <layout class="QVBoxLayout" name="sessionLayout"/>
       </widget>
      </widget>
