@@ -97,29 +97,40 @@ void MainWindow::initUi(bool forceCreate) // 构建窗口 UI
     m_scrollAnim->setEasingCurve(QEasingCurve::OutCubic);
     m_scrollAnim->setDuration(180);
 
-        // ⚠️ 用 scrollArea 自身高度，不是 viewport
-    int visibleH = ui->scrollArea->height();
 
-    int spacerH = visibleH / 2 - rowHeight / 2;
-    spacerH = qMax(0, spacerH);
 
-    // --- 顶部 ---
-    if (!topSpacer)
+    int need =maxWindowHeight/1.8 - rowHeight/2;
+    int count = (need + rowHeight - 1) / rowHeight;
+
+    // ---------- 顶部 ----------
+    while (topSpacers.size() < count)
     {
-        topSpacer = new QWidget;
-        topSpacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        ui->sessionLayout->insertWidget(0, topSpacer);
+        QWidget *w = new QWidget;
+        w->setFixedHeight(rowHeight);
+        ui->sessionLayout->insertWidget(0, w);
+        topSpacers.append(w);
     }
-    topSpacer->setFixedHeight(spacerH);
-
-    // --- 底部 ---
-    if (!bottomSpacer)
+    while (topSpacers.size() > count)
     {
-        bottomSpacer = new QWidget;
-        bottomSpacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        ui->sessionLayout->addWidget(bottomSpacer);
+        QWidget *w = topSpacers.takeLast();
+        ui->sessionLayout->removeWidget(w);
+        w->deleteLater();
     }
-    bottomSpacer->setFixedHeight(spacerH + rowHeight);
+
+    // ---------- 底部 ----------
+    while (bottomSpacers.size() < count)
+    {
+        QWidget *w = new QWidget;
+        w->setFixedHeight(rowHeight);
+        ui->sessionLayout->addWidget(w);
+        bottomSpacers.append(w);
+    }
+    while (bottomSpacers.size() > count)
+    {
+        QWidget *w = bottomSpacers.takeLast();
+        ui->sessionLayout->removeWidget(w);
+        w->deleteLater();
+    }
 
 
 
@@ -218,10 +229,13 @@ void MainWindow::refreshSessions() // 刷新音频会话
         if (!sessionMap.contains(s.pid))
         {
             QWidget *row = createSessionRow(s.pid, s.volume);
-            int idx = ui->sessionLayout->count();         // 默认末尾
-            if (bottomSpacer) idx -= 1;                  // 底部占位前面
+            int idx = ui->sessionLayout->count();
+            if (!bottomSpacers.isEmpty())
+            {
+                idx = ui->sessionLayout->indexOf(bottomSpacers.first());
+            }
             ui->sessionLayout->insertWidget(idx, row);
-            sessionMap.insert(s.pid, {s.pid, s.volume, row}); // map 持有
+            sessionMap.insert(s.pid, {s.pid, s.volume, row});
         }
         else
         {

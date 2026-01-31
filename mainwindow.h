@@ -51,8 +51,8 @@ private:
     QMap<DWORD, SessionInfo> sessionMap;
     QWidget *m_fadeMask = nullptr;
     int m_fadeHeight = 0;
-    QWidget *topSpacer = nullptr;
-    QWidget *bottomSpacer = nullptr;
+    QVector<QWidget*> topSpacers;
+    QVector<QWidget*> bottomSpacers;
 
     Ui::MainWindow *ui;
 
