@@ -47,4 +47,4 @@ else()
   )
 endif()
 
-target_link_libraries(Audio_control PRIVATE Qt5::Widgets Qt5::WinExtras)
+target_link_libraries(Audio_control PRIVATE Version Qt5::Widgets Qt5::WinExtras)

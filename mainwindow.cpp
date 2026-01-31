@@ -1,60 +1,64 @@
 #include "mainwindow.h"
 #include "./ui_mainwindow.h"
+#include <iostream>
 
-#include <QSettings>
-#include <QtWin>
-#include <shellapi.h>
-#include <shlobj.h>
-#include <QScrollArea>
-#include <QDebug>
-#include <shellapi.h>
-#include <shlobj.h>
-#include <QGraphicsOpacityEffect>
-#include <QWheelEvent>
-
-MainWindow::MainWindow(QSettings *settings , QWidget *parent)
-    : QMainWindow(parent)
-    , ui(new Ui::MainWindow)
-    , m_settings(settings)
+MainWindow::MainWindow(QSettings *settings, QWidget *parent)
+    : QMainWindow(parent), ui(new Ui::MainWindow), m_settings(settings)
 {
     ui->setupUi(this);
-    setWindowIcon(QIcon(":/img/icon.ico"));
+
+    this->setWindowIcon(QIcon(":/img/icon.ico"));
 
     // 读取设置
+    if (!m_settings->contains("Style/RowHeight"))
+    {
+        m_settings->setValue("Style/RowHeight", 90);
+    }
+    if (!m_settings->contains("Style/RowWidth"))
+    {
+        m_settings->setValue("Style/RowWidth", 200);
+    }
+    if (!m_settings->contains("Style/MaxWindowHeight"))
+    {
+        m_settings->setValue("Style/MaxWindowHeight", 300);
+    }
+
     int rowHeight = m_settings->value("Style/RowHeight", 90).toInt();
-    int rowWidth  = m_settings->value("Style/RowWidth", 200).toInt();
+    int rowWidth = m_settings->value("Style/RowWidth", 200).toInt();
     int maxHeight = m_settings->value("Style/MaxWindowHeight", 300).toInt();
     this->rowHeight = rowHeight;
     this->rowWidth = rowWidth;
     this->maxWindowHeight = maxHeight;
-    //退出状态
+    // 退出状态
     m_settings->beginGroup("MainWindow");
-    restoreGeometry(m_settings->value("geometry").toByteArray());
-    restoreState(m_settings->value("windowState").toByteArray());
+    this->restoreGeometry(m_settings->value("geometry").toByteArray());
+    this->restoreState(m_settings->value("windowState").toByteArray());
     m_settings->endGroup();
 
     // 无边框 + 不显示任务栏 + 永远在普通窗口下面 (初始状态)
-    setWindowFlags(
+    this->setWindowFlags(
         Qt::FramelessWindowHint |
         Qt::Tool |
-        Qt::WindowStaysOnBottomHint
-    );
+        Qt::WindowStaysOnBottomHint);
 
-    setAttribute(Qt::WA_TranslucentBackground);//透明窗口
+    this->setAttribute(Qt::WA_TranslucentBackground); // 透明窗口
 
     QPalette Fuck = QPalette();
-    Fuck.setColor(QPalette::Background, QColor(100,100,100,2));//伪造透明阻止鼠标穿透，傻逼完了
-    setPalette(Fuck);
+    Fuck.setColor(QPalette::Background, QColor(100, 100, 100, 2)); // 伪造透明阻止鼠标穿透，傻逼完了
+    this->setPalette(Fuck);
 
-    enumerateAudioSessions();//动态构建音量合成器
-    
-    show();  // 初始显示
+    QTimer *refreshTimer = new QTimer(this);
+    this->connect(refreshTimer, &QTimer::timeout, this, &MainWindow::refreshSessions);
+    refreshTimer->start(100); // 每100毫秒刷新一次 //动态构建音量合成器
+    // refreshSessions();
+
+    this->show(); // 初始显示
 }
 
 MainWindow::~MainWindow()
 {
 
-    // 保存设置
+    // 保存退出状态
     m_settings->beginGroup("MainWindow");
     m_settings->setValue("geometry", saveGeometry());
     m_settings->setValue("windowState", saveState());
@@ -63,8 +67,7 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
-
-void MainWindow::toggleFrameless()// 切换编辑
+void MainWindow::toggleFrameless() // 切换移动模式
 {
     frameless = !frameless;
 
@@ -72,9 +75,12 @@ void MainWindow::toggleFrameless()// 切换编辑
     this->hide();
 
     // 修改窗口标志
-    if (frameless) {
+    if (frameless)
+    {
         this->setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnBottomHint);
-    } else {
+    }
+    else
+    {
         this->setWindowFlags(Qt::Tool | Qt::WindowStaysOnBottomHint); // 移除 Frameless
     }
 
@@ -82,41 +88,139 @@ void MainWindow::toggleFrameless()// 切换编辑
     this->show();
 }
 
-/* =========================================================
- * 枚举当前系统的所有音频 Session
- * ========================================================= */
-void MainWindow::enumerateAudioSessions()
+void MainWindow::refreshSessions() // 刷新音频会话
 {
-    IMMDeviceEnumerator* deviceEnumerator = nullptr;
-    IMMDevice* device = nullptr;
-    IAudioSessionManager2* sessionManager = nullptr;
-    IAudioSessionEnumerator* sessionEnumerator = nullptr;
+    QSet<DWORD> newPIDs;
+    QList<SessionInfo> current = scanSessions();
 
-    // 创建设备枚举器
-    CoCreateInstance(
-        __uuidof(MMDeviceEnumerator),
-        nullptr,
-        CLSCTX_INPROC_SERVER,
-        __uuidof(IMMDeviceEnumerator),
-        (void**)&deviceEnumerator
-    );
+    // 新增 session
+    for (const SessionInfo &s : current)
+    {
+        if (shouldFilterOut(s.pid, s.volume))
+        {
+            continue;
+        }
 
-    // 获取默认输出设备
-    deviceEnumerator->GetDefaultAudioEndpoint(
-        eRender,
-        eConsole,
-        &device
-    );
+        newPIDs.insert(s.pid);
+        if (!sessionMap.contains(s.pid))
+        {
+            QWidget *row = createSessionRow(s.pid, s.volume);
+            ui->sessionLayout->addWidget(row);
 
-    // 激活 Session Manager
-    device->Activate(
-        __uuidof(IAudioSessionManager2),
-        CLSCTX_INPROC_SERVER,
-        nullptr,
-        (void**)&sessionManager
-    );
+            sessionMap.insert(s.pid, {s.pid, s.volume, row});
+        }
+    }
 
-    // 枚举所有 Session
+    // 移除不存在的 session
+    for (auto it = sessionMap.begin(); it != sessionMap.end();)
+    {
+        if (!newPIDs.contains(it.key()))
+        {
+            QWidget *row = it.value().widget;
+            ui->sessionLayout->removeWidget(row);
+            row->deleteLater();
+            it = sessionMap.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+
+    int totalHeight = ui->sessionLayout->count() * rowHeight + 12;
+
+    int actualHeight = qMin(totalHeight, maxWindowHeight);
+    int windowWidth = rowWidth * 2;
+
+    this->setFixedSize(windowWidth, actualHeight);
+
+    // 若使用 QScrollArea，可同步更新高度限制：
+    if (ui->scrollArea)
+    {
+        ui->sessionContainer->setFixedHeight(totalHeight);
+        ui->scrollArea->setFixedHeight(actualHeight);
+    }
+}
+
+bool MainWindow::shouldFilterOut(DWORD pid, ISimpleAudioVolume *volume) // 过滤条件
+{
+    // 获取当前进程路径
+    QString exePath = getProcessPath(pid);
+    if (exePath.isEmpty())
+        return true;
+
+    QString exeName = QFileInfo(exePath).fileName().toLower();
+
+    // 默认排除名单
+    static const QStringList defaultSkipNames = {
+        "system", "idle", "audiodg.exe", "runtimebroker.exe"};
+    if (defaultSkipNames.contains(exeName))
+        return true;
+
+    // 获取自身音量
+    float selfVol = 0.0f;
+    if (FAILED(volume->GetMasterVolume(&selfVol)))
+        return true;
+
+    // 判断是否已有同名进程且有声音(自动隐藏手动静音的同名进程)
+    bool sameNameWithSound = false;
+
+    for (auto it = sessionMap.begin(); it != sessionMap.end(); ++it)
+    {
+        if (it.key() == pid)
+            continue;
+
+        QString otherExeName = QFileInfo(getProcessPath(it.key())).fileName().toLower();
+        if (otherExeName == exeName)
+        {
+            ISimpleAudioVolume *otherVol = it.value().volume;
+            if (otherVol)
+            {
+                float otherVolume = 0.0f;
+                if (SUCCEEDED(otherVol->GetMasterVolume(&otherVolume)) && otherVolume > 0.01f)
+                {
+                    sameNameWithSound = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    // 如果自己静音，且已有同名不静音 → 过滤
+    return (selfVol <= 0.01f && sameNameWithSound);
+}
+
+QString MainWindow::getProcessPath(DWORD pid)
+{
+    HANDLE hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!hProc)
+        return {};
+
+    wchar_t exePath[MAX_PATH] = {};
+    DWORD size = MAX_PATH;
+    QueryFullProcessImageNameW(hProc, 0, exePath, &size);
+    CloseHandle(hProc);
+
+    return QString::fromWCharArray(exePath);
+}
+
+QList<SessionInfo> MainWindow::scanSessions() // 枚举当前系统的所有音频 Session
+{
+    QList<SessionInfo> list;
+
+    IMMDeviceEnumerator *deviceEnumerator = nullptr;
+    IMMDevice *device = nullptr;
+    IAudioSessionManager2 *sessionManager = nullptr;
+    IAudioSessionEnumerator *sessionEnumerator = nullptr;
+
+    CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_INPROC_SERVER,
+                     __uuidof(IMMDeviceEnumerator), (void **)&deviceEnumerator);
+
+    deviceEnumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
+
+    device->Activate(__uuidof(IAudioSessionManager2), CLSCTX_INPROC_SERVER, nullptr,
+                     (void **)&sessionManager);
+
     sessionManager->GetSessionEnumerator(&sessionEnumerator);
 
     int count = 0;
@@ -124,29 +228,19 @@ void MainWindow::enumerateAudioSessions()
 
     for (int i = 0; i < count; ++i)
     {
-        IAudioSessionControl* ctrl = nullptr;
+        IAudioSessionControl *ctrl = nullptr;
         sessionEnumerator->GetSession(i, &ctrl);
 
-        IAudioSessionControl2* ctrl2 = nullptr;
-        ctrl->QueryInterface(
-            __uuidof(IAudioSessionControl2),
-            (void**)&ctrl2
-        );
+        IAudioSessionControl2 *ctrl2 = nullptr;
+        ctrl->QueryInterface(__uuidof(IAudioSessionControl2), (void **)&ctrl2);
 
         DWORD pid = 0;
         ctrl2->GetProcessId(&pid);
 
-        // 每个 Session 都有独立音量
-        ISimpleAudioVolume* volume = nullptr;
-        ctrl2->QueryInterface(
-            __uuidof(ISimpleAudioVolume),
-            (void**)&volume
-        );
+        ISimpleAudioVolume *volume = nullptr;
+        ctrl2->QueryInterface(__uuidof(ISimpleAudioVolume), (void **)&volume);
 
-        // 创建 UI 行
-        createSessionRow(pid, volume);
-        reflowSessionLayout();
-
+        list.append({pid, volume});
 
         ctrl2->Release();
         ctrl->Release();
@@ -156,28 +250,26 @@ void MainWindow::enumerateAudioSessions()
     sessionManager->Release();
     device->Release();
     deviceEnumerator->Release();
+
+    return list;
 }
 
-/* =========================================================
- * 为一个音频 Session 创建 UI 行
- * ========================================================= */
-void MainWindow::createSessionRow(DWORD pid, ISimpleAudioVolume* volume)
+QWidget *MainWindow::createSessionRow(DWORD pid, ISimpleAudioVolume *volume) // 创建 UI 行
 {
-    QWidget* row = new QWidget;
+    QWidget *row = new QWidget;
     row->setMinimumHeight(rowHeight);
     row->setAttribute(Qt::WA_TranslucentBackground);
     row->setStyleSheet(R"(background: transparent;)");
 
-    QHBoxLayout* layout = new QHBoxLayout(row);
+    QHBoxLayout *layout = new QHBoxLayout(row);
     layout->setContentsMargins(10, 6, 10, 6);
     layout->setSpacing(8);
 
-    /* -------- 音量条 -------- */
-    QSlider* slider = new QSlider(Qt::Horizontal);
+    // -------- 音量条 --------
+    QSlider *slider = new QSlider(Qt::Horizontal);
     slider->setRange(0, 100);
-    slider->setInvertedAppearance(true);  // 视觉反转
-    slider->setInvertedControls(false);   // 滚轮方向正常
-
+    slider->setInvertedAppearance(true);
+    slider->setInvertedControls(false);
     slider->setMinimumWidth(rowWidth);
     slider->setFixedHeight(32);
 
@@ -212,27 +304,21 @@ void MainWindow::createSessionRow(DWORD pid, ISimpleAudioVolume* volume)
     volume->GetMasterVolume(&vol);
     slider->setValue(int(vol * 100));
 
-    connect(slider, &QSlider::valueChanged, this,
-        [volume](int v){
-            volume->SetMasterVolume(v / 100.0f, nullptr);
-        }
-    );
+    connect(slider, &QSlider::valueChanged, this, [volume](int v)
+            { volume->SetMasterVolume(v / 100.0f, nullptr); });
 
-    /* -------- 获取图标 -------- */
+    // -------- 获取图标 --------
     QPixmap iconPixmap;
     {
         HANDLE hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-        if (hProc) {
+        if (hProc)
+        {
             wchar_t exePath[MAX_PATH] = {};
             DWORD size = MAX_PATH;
-            if (QueryFullProcessImageNameW(hProc, 0, exePath, &size)) {
+            if (QueryFullProcessImageNameW(hProc, 0, exePath, &size))
+            {
                 SHFILEINFOW info{};
-                if (SHGetFileInfoW(
-                        exePath,
-                        0,
-                        &info,
-                        sizeof(info),
-                        SHGFI_ICON | SHGFI_LARGEICON))  // 使用大图标
+                if (SHGetFileInfoW(exePath, 0, &info, sizeof(info), SHGFI_ICON | SHGFI_LARGEICON))
                 {
                     iconPixmap = QtWin::fromHICON(info.hIcon);
                     DestroyIcon(info.hIcon);
@@ -242,7 +328,7 @@ void MainWindow::createSessionRow(DWORD pid, ISimpleAudioVolume* volume)
         }
     }
 
-    QLabel* icon = new QLabel;
+    QLabel *icon = new QLabel;
     icon->setObjectName("sessionIcon");
     icon->setFixedSize(64, 64);
     icon->setPixmap(iconPixmap);
@@ -254,34 +340,14 @@ void MainWindow::createSessionRow(DWORD pid, ISimpleAudioVolume* volume)
             padding: 2px;
             border: 2px solid transparent;
         }
-
         QLabel#sessionIcon:hover {
             border: 2px solid #ffaad4;
         }
-
     )");
 
     layout->addWidget(slider, 1);
     layout->addWidget(icon);
     ui->scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     ui->scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    ui->sessionLayout->addWidget(row);
-}
-
-void MainWindow::reflowSessionLayout()
-{
-    int count = ui->sessionLayout->count();
-    int totalHeight = count * rowHeight + 12;
-
-    int actualHeight = qMin(totalHeight, maxWindowHeight);
-    int windowWidth = rowWidth *2;
-
-    this->setFixedSize(windowWidth, actualHeight);
-
-    // 若使用 QScrollArea，可同步更新高度限制：
-    if (ui->scrollArea) {
-        ui->sessionContainer->setFixedHeight(totalHeight);
-        ui->scrollArea->setFixedHeight(actualHeight);
-    }
-
+    return row;
 }

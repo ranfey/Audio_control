@@ -1,6 +1,12 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
-
+#include <QtWin>
+#include <QScrollArea>
+#include <QDebug>
+#include <shellapi.h>
+#include <shlobj.h>
+#include <QGraphicsOpacityEffect>
+#include <QWheelEvent>
 #include <QMainWindow>
 #include <QSlider>
 #include <QLabel>
@@ -12,10 +18,21 @@
 #include <endpointvolume.h>
 #include <QSettings>
 #include <QPainter>
-
+#include <QTimer>
+#include <QFileInfo>
 QT_BEGIN_NAMESPACE
-namespace Ui { class MainWindow; }
+namespace Ui
+{
+    class MainWindow;
+}
 QT_END_NAMESPACE
+
+struct SessionInfo
+{
+    DWORD pid;
+    ISimpleAudioVolume *volume;
+    QWidget *widget;
+};
 
 class MainWindow : public QMainWindow
 {
@@ -26,24 +43,26 @@ private:
     int rowWidth = 0;
     int rowHeight = 0;
     QSettings *m_settings;
-
-public:
-    explicit MainWindow(QSettings *settings, QWidget *parent = nullptr);
-    ~MainWindow();
+    QMap<DWORD, SessionInfo> sessionMap;
 
     Ui::MainWindow *ui;
 
-    /* ========== 核心功能函数 ========== */
+    void refreshSessions();
+
+    QList<SessionInfo> scanSessions();
+
+    QWidget *createSessionRow(DWORD pid, ISimpleAudioVolume *volume);
+
+    QString getProcessPath(DWORD pid);
+
+    bool shouldFilterOut(DWORD pid, ISimpleAudioVolume *volume);
+
+public:
+    explicit MainWindow(QSettings *settings, QWidget *parent = nullptr);
+
+    ~MainWindow();
 
     void toggleFrameless();
-    // 枚举当前所有音频 Session（等同 Win10 合成器）
-    void enumerateAudioSessions();
-
-    // 为一个 Session 创建一行 UI（图标 + slider）
-    void createSessionRow(DWORD pid, ISimpleAudioVolume* volume);
-
-    void reflowSessionLayout();
-
 };
 
 #endif // MAINWINDOW_H
