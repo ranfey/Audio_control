@@ -49,6 +49,10 @@ private:
     int rowHeight = 0;
     QSettings *m_settings;
     QMap<DWORD, SessionInfo> sessionMap;
+    QWidget *m_fadeMask = nullptr;
+    int m_fadeHeight = 0;
+    QWidget *topSpacer = nullptr;
+    QWidget *bottomSpacer = nullptr;
 
     Ui::MainWindow *ui;
 
@@ -70,6 +74,8 @@ private:
     int m_scrollTarget = 0;
 
 public:
+    void initUi(bool forceCreate);
+
     void initTime();
 
     explicit MainWindow(QSettings *settings, QWidget *parent = nullptr);
@@ -77,6 +83,8 @@ public:
     ~MainWindow();
 
     void toggleFrameless();
+
+    void snapScrollToNearestRow();
 };
 
 #endif // MAINWINDOW_H
