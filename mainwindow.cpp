@@ -7,6 +7,30 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
 {
     ui->setupUi(this);
 
+    initTime(); // 初始化
+
+    QTimer *refreshTimer = new QTimer(this);
+    this->connect(refreshTimer, &QTimer::timeout, this, &MainWindow::refreshSessions);
+    refreshTimer->start(100); // 每100毫秒刷新一次 //动态构建音量合成器
+    // refreshSessions();
+
+    this->show(); // 初始显示
+}
+
+MainWindow::~MainWindow()
+{
+
+    // 保存退出状态
+    m_settings->beginGroup("MainWindow");
+    m_settings->setValue("geometry", saveGeometry());
+    m_settings->setValue("windowState", saveState());
+    m_settings->endGroup();
+    CoUninitialize();
+    delete ui;
+}
+
+void MainWindow::initTime() // 初始化
+{
     this->setWindowIcon(QIcon(":/img/icon.ico"));
 
     // 读取设置
@@ -46,68 +70,33 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     QPalette Fuck = QPalette();
     Fuck.setColor(QPalette::Background, QColor(100, 100, 100, 2)); // 伪造透明阻止鼠标穿透，傻逼完了
     this->setPalette(Fuck);
-
-    QTimer *refreshTimer = new QTimer(this);
-    this->connect(refreshTimer, &QTimer::timeout, this, &MainWindow::refreshSessions);
-    refreshTimer->start(100); // 每100毫秒刷新一次 //动态构建音量合成器
-    // refreshSessions();
-
-    this->show(); // 初始显示
 }
 
-MainWindow::~MainWindow()
-{
-
-    // 保存退出状态
-    m_settings->beginGroup("MainWindow");
-    m_settings->setValue("geometry", saveGeometry());
-    m_settings->setValue("windowState", saveState());
-    m_settings->endGroup();
-    CoUninitialize();
-    delete ui;
-}
-
-void MainWindow::toggleFrameless() // 切换移动模式
-{
-    frameless = !frameless;
-
-    // 先隐藏窗口
-    this->hide();
-
-    // 修改窗口标志
-    if (frameless)
-    {
-        this->setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnBottomHint);
-    }
-    else
-    {
-        this->setWindowFlags(Qt::Tool | Qt::WindowStaysOnBottomHint); // 移除 Frameless
-    }
-
-    // 重新显示窗口（必要）
-    this->show();
-}
 
 void MainWindow::refreshSessions() // 刷新音频会话
 {
     QSet<DWORD> newPIDs;
     QList<SessionInfo> current = scanSessions();
 
-    // 新增 session
     for (const SessionInfo &s : current)
     {
         if (shouldFilterOut(s.pid, s.volume))
         {
+            if (s.volume) s.volume->Release();   //要释放
             continue;
         }
 
         newPIDs.insert(s.pid);
+
         if (!sessionMap.contains(s.pid))
         {
             QWidget *row = createSessionRow(s.pid, s.volume);
             ui->sessionLayout->addWidget(row);
-
-            sessionMap.insert(s.pid, {s.pid, s.volume, row});
+            sessionMap.insert(s.pid, {s.pid, s.volume, row}); // map 持有
+        }
+        else
+        {
+            if (s.volume) s.volume->Release();
         }
     }
 
@@ -116,6 +105,7 @@ void MainWindow::refreshSessions() // 刷新音频会话
     {
         if (!newPIDs.contains(it.key()))
         {
+            if (it.value().volume) it.value().volume->Release();
             QWidget *row = it.value().widget;
             ui->sessionLayout->removeWidget(row);
             row->deleteLater();
@@ -151,7 +141,7 @@ bool MainWindow::shouldFilterOut(DWORD pid, ISimpleAudioVolume *volume) // 过�
 
     QString exeName = QFileInfo(exePath).fileName().toLower();
 
-    // 默认排除名单
+    // 默认排除名单处理系统音频等
     static const QStringList defaultSkipNames = {
         "system", "idle", "audiodg.exe", "runtimebroker.exe"};
     if (defaultSkipNames.contains(exeName))
@@ -190,7 +180,7 @@ bool MainWindow::shouldFilterOut(DWORD pid, ISimpleAudioVolume *volume) // 过�
     return (selfVol <= 0.01f && sameNameWithSound);
 }
 
-QString MainWindow::getProcessPath(DWORD pid)
+QString MainWindow::getProcessPath(DWORD pid)// 获取进程路径
 {
     HANDLE hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
     if (!hProc)
@@ -256,6 +246,20 @@ QList<SessionInfo> MainWindow::scanSessions() // 枚举当前系统的所有音�
 
 QWidget *MainWindow::createSessionRow(DWORD pid, ISimpleAudioVolume *volume) // 创建 UI 行
 {
+
+    ui->scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    ui->scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+
+    // 关键：在 viewport 上装事件过滤器，拦截 wheel
+    ui->scrollArea->viewport()->installEventFilter(this);
+
+    // 预建一个动画（也可以懒加载）
+    m_scrollAnim = new QPropertyAnimation(ui->scrollArea->verticalScrollBar(),
+                                      QByteArrayLiteral("value"),
+                                      this);
+
+    m_scrollAnim->setEasingCurve(QEasingCurve::OutCubic);
+    m_scrollAnim->setDuration(180);
     QWidget *row = new QWidget;
     row->setMinimumHeight(rowHeight);
     row->setAttribute(Qt::WA_TranslucentBackground);
@@ -347,7 +351,83 @@ QWidget *MainWindow::createSessionRow(DWORD pid, ISimpleAudioVolume *volume) // 
 
     layout->addWidget(slider, 1);
     layout->addWidget(icon);
-    ui->scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    ui->scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     return row;
+}
+
+void MainWindow::toggleFrameless() // 切换移动模式
+{
+    frameless = !frameless;
+
+    // 先隐藏窗口
+    this->hide();
+
+    // 修改窗口标志
+    if (frameless)
+    {
+        this->setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnBottomHint);
+    }
+    else
+    {
+        this->setWindowFlags(Qt::Tool | Qt::WindowStaysOnBottomHint); // 移除 Frameless
+    }
+
+    // 重新显示窗口（必要）
+    this->show();
+}
+
+bool MainWindow::eventFilter(QObject *watched, QEvent *event)// 事件过滤器绑定到 viewport 上已拦截 wheel 事件使其滚动 scrollbar
+{
+    if (watched == ui->scrollArea->viewport() && event->type() == QEvent::Wheel)
+    {
+        auto *we = static_cast<QWheelEvent*>(event);
+
+        int dy = 0;
+        if (!we->pixelDelta().isNull())
+        {
+            // 触控板：dy 更小
+            dy = we->pixelDelta().y();
+        }
+        else
+        {
+            dy = we->angleDelta().y() / 120 * 50; // 每格重写位50，按手感调
+        }
+
+        // wheel: dy>0 向上滚 scrollbar 减小
+            QScrollBar *bar = ui->scrollArea->verticalScrollBar();
+
+    if (!m_scrollAnim)
+    {
+        m_scrollAnim = new QPropertyAnimation(this);
+        m_scrollAnim->setEasingCurve(QEasingCurve::OutCubic);
+        m_scrollAnim->setDuration(180);
+        m_scrollAnim->setPropertyName(QByteArrayLiteral("value"));
+    }
+
+    // 绑定目标：动画作用
+    m_scrollAnim->setTargetObject(bar);
+
+    const int current = bar->value();
+    int base = current;
+
+    // 滚轮连续触发时，以“当前 endValue”为基准叠加，手感会更像网页 smooth scroll
+    if (m_scrollAnim->state() == QAbstractAnimation::Running)
+    {
+        bool ok = false;
+        int endv = m_scrollAnim->endValue().toInt(&ok);
+        if (ok) base = endv;
+        m_scrollAnim->stop();
+    }
+
+    int target = base -dy;
+    target = qBound(bar->minimum(), target, bar->maximum());
+
+    m_scrollAnim->setStartValue(current);
+    m_scrollAnim->setEndValue(target);
+    m_scrollAnim->start();
+
+        event->accept();
+        return true;
+    }
+
+    return QMainWindow::eventFilter(watched, event);
 }

@@ -20,6 +20,11 @@
 #include <QPainter>
 #include <QTimer>
 #include <QFileInfo>
+#include <QScroller>
+#include <QScrollBar>
+#include <QPropertyAnimation>
+#include <QPointer>
+
 QT_BEGIN_NAMESPACE
 namespace Ui
 {
@@ -57,7 +62,16 @@ private:
 
     bool shouldFilterOut(DWORD pid, ISimpleAudioVolume *volume);
 
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
+private:
+    QPointer<QPropertyAnimation> m_scrollAnim;
+    int m_scrollTarget = 0;
+
 public:
+    void initTime();
+
     explicit MainWindow(QSettings *settings, QWidget *parent = nullptr);
 
     ~MainWindow();

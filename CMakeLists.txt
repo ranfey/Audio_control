@@ -24,7 +24,7 @@ set(RESOURCES resources.qrc)
 #    endif()
 #endif()
 
-find_package(Qt5 COMPONENTS Widgets REQUIRED WinExtras)
+find_package(Qt5 COMPONENTS Widgets Core Gui REQUIRED WinExtras)
 
 if(ANDROID)
   add_library(Audio_control SHARED
@@ -33,6 +33,8 @@ if(ANDROID)
     mainwindow.cpp
     mainwindow.h
     mainwindow.ui
+    maintray.cpp
+    maintray.h
     icon.rc
   )
 else()
@@ -42,9 +44,11 @@ else()
     mainwindow.cpp
     mainwindow.h
     mainwindow.ui
+    maintray.cpp
+    maintray.h
     ${RESOURCES}
     icon.rc
   )
 endif()
 
-target_link_libraries(Audio_control PRIVATE Version Qt5::Widgets Qt5::WinExtras)
+target_link_libraries(Audio_control PRIVATE Version Qt5::Core Qt5::Gui Qt5::Widgets Qt5::WinExtras)
