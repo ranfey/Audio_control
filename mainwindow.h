@@ -24,6 +24,7 @@
 #include <QScrollBar>
 #include <QPropertyAnimation>
 #include <QPointer>
+#include <QGraphicsDropShadowEffect>
 
 QT_BEGIN_NAMESPACE
 namespace Ui
@@ -72,6 +73,7 @@ protected:
 private:
     QPointer<QPropertyAnimation> m_scrollAnim;
     int m_scrollTarget = 0;
+    class SessionRow *m_focusedRow = nullptr;
 
 public:
     void initUi(bool forceCreate);

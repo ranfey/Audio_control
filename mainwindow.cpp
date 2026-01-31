@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 #include "./ui_mainwindow.h"
 #include <iostream>
+#include <QGraphicsDropShadowEffect>
 
 class ScrollFadeMask : public QWidget
 {
@@ -52,6 +53,308 @@ private:
 };
 
 
+class SessionRow : public QWidget
+{
+    Q_OBJECT
+    Q_PROPERTY(int fixedHeight READ height WRITE setFixedHeightAnim)
+    Q_PROPERTY(int glowRadius READ glowRadius WRITE setGlowRadius)
+    Q_PROPERTY(QColor glowColor READ glowColor WRITE setGlowColor)
+    Q_PROPERTY(int topMargin READ topMargin WRITE setTopMargin)
+    Q_PROPERTY(int bottomMargin READ bottomMargin WRITE setBottomMargin)
+
+public:
+    SessionRow(DWORD pid, ISimpleAudioVolume *volume, int w, int h, QWidget *parent = nullptr)
+        : QWidget(parent), m_baseHeight(h), m_expandSize((h * 2 - h) / 2)
+    {
+        this->setMinimumHeight(h);
+        this->setMaximumHeight(h);
+        
+        this->setAttribute(Qt::WA_TranslucentBackground);
+        this->setStyleSheet("background: transparent;");
+
+        QHBoxLayout *layout = new QHBoxLayout(this);
+        layout->setContentsMargins(10, 6, 10, 6);
+        layout->setSpacing(8);
+
+        // Slider
+        QSlider *slider = new QSlider(Qt::Horizontal);
+        slider->setRange(0, 100);
+        slider->setInvertedAppearance(true);
+        slider->setInvertedControls(false);
+        slider->setMinimumWidth(w);
+        slider->setFixedHeight(32);
+
+        slider->setStyleSheet(R"(
+            QSlider {
+                background: transparent;
+            }
+            QSlider::groove:horizontal {
+                height: 8px;
+                background: #ffe4f0;
+                border-radius: 4px;
+            }
+            QSlider::handle:horizontal {
+                width: 20px;
+                height: 20px;
+                background: #ff77aa;
+                border: 2px solid white;
+                margin: -8px 0;
+                border-radius: 10px;
+            }
+            QSlider::sub-page:horizontal {
+                background: #eee;
+                border-radius: 4px;
+            }
+            QSlider::add-page:horizontal {
+                background: #ffb6d5;
+                border-radius: 4px;
+            }
+        )");
+
+        float vol = 0.0f;
+        volume->GetMasterVolume(&vol);
+        slider->setValue(int(vol * 100));
+
+        connect(slider, &QSlider::valueChanged, this, [volume](int v)
+                { volume->SetMasterVolume(v / 100.0f, nullptr); });
+
+        // Icon
+        QPixmap iconPixmap;
+        {
+            HANDLE hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+            if (hProc)
+            {
+                wchar_t exePath[MAX_PATH] = {};
+                DWORD size = MAX_PATH;
+                if (QueryFullProcessImageNameW(hProc, 0, exePath, &size))
+                {
+                    SHFILEINFOW info{};
+                    if (SHGetFileInfoW(exePath, 0, &info, sizeof(info), SHGFI_ICON | SHGFI_LARGEICON))
+                    {
+                        iconPixmap = QtWin::fromHICON(info.hIcon);
+                        DestroyIcon(info.hIcon);
+                    }
+                }
+                CloseHandle(hProc);
+            }
+        }
+
+        QLabel *icon = new QLabel;
+        icon->setObjectName("sessionIcon");
+        icon->setFixedSize(64, 64);
+        icon->setPixmap(iconPixmap);
+        icon->setScaledContents(true);
+        icon->setStyleSheet(R"(
+            QLabel#sessionIcon {
+                background: transparent;
+                border-radius: 4px;
+                padding: 2px;
+                border: 2px solid transparent;
+            }
+            QLabel#sessionIcon:hover {
+                border: 2px solid #ffaad4;
+            }
+        )");
+
+        layout->addWidget(slider, 1);
+        layout->addWidget(icon);
+
+        // Glow
+        m_glowEffect = new QGraphicsDropShadowEffect(this);
+        m_glowEffect->setBlurRadius(0);
+        m_glowEffect->setColor(Qt::transparent);
+        m_glowEffect->setOffset(0, 0);
+        this->setGraphicsEffect(m_glowEffect);
+
+        // Animations
+        m_animHeight = new QPropertyAnimation(this, "fixedHeight", this);
+        m_animHeight->setDuration(500);
+        m_animHeight->setEasingCurve(QEasingCurve::OutCubic);
+
+        m_animTopMargin = new QPropertyAnimation(this, "topMargin", this);
+        m_animTopMargin->setDuration(500);
+        m_animTopMargin->setEasingCurve(QEasingCurve::OutCubic);
+
+        m_animBottomMargin = new QPropertyAnimation(this, "bottomMargin", this);
+        m_animBottomMargin->setDuration(500);
+        m_animBottomMargin->setEasingCurve(QEasingCurve::OutCubic);
+
+        m_animGlowRadius = new QPropertyAnimation(this, "glowRadius", this);
+        m_animGlowRadius->setDuration(500);
+        m_animGlowRadius->setEasingCurve(QEasingCurve::OutCubic);
+
+        m_animGlowColor = new QPropertyAnimation(this, "glowColor", this);
+        m_animGlowColor->setDuration(500);
+        m_animGlowColor->setEasingCurve(QEasingCurve::OutCubic);
+    }
+
+    void setFixedHeightAnim(int h) {
+        this->setMinimumHeight(h);
+        this->setMaximumHeight(h);
+    }
+
+    int glowRadius() const { return m_glowEffect->blurRadius(); }
+    void setGlowRadius(int r) { m_glowEffect->setBlurRadius(r); }
+
+    QColor glowColor() const { return m_glowEffect->color(); }
+    void setGlowColor(const QColor &c) { m_glowEffect->setColor(c); }
+
+    int topMargin() const { return m_topMargin; }
+    void setTopMargin(int m) {
+        m_topMargin = m;
+        updateMargins();
+    }
+
+    int bottomMargin() const { return m_bottomMargin; }
+    void setBottomMargin(int m) {
+        m_bottomMargin = m;
+        updateMargins();
+    }
+
+    void updateMargins() {
+        setContentsMargins(10, m_topMargin, 10, m_bottomMargin);
+    }
+
+    void setFocused(bool on)
+    {
+        if (on)
+        {
+            // 高度
+            m_animHeight->stop();
+            m_animHeight->setStartValue(height());
+            m_animHeight->setEndValue(m_baseHeight + m_expandSize * 2);
+            m_animHeight->start();
+
+            // margin
+            m_animTopMargin->stop();
+            m_animTopMargin->setStartValue(topMargin());
+            m_animTopMargin->setEndValue(m_expandSize);
+            m_animTopMargin->start();
+
+            m_animBottomMargin->stop();
+            m_animBottomMargin->setStartValue(bottomMargin());
+            m_animBottomMargin->setEndValue(m_expandSize);
+            m_animBottomMargin->start();
+
+            // glow
+            m_animGlowRadius->stop();
+            m_animGlowRadius->setStartValue(glowRadius());
+            m_animGlowRadius->setEndValue(40);
+            m_animGlowRadius->start();
+
+            m_animGlowColor->stop();
+            m_animGlowColor->setStartValue(glowColor());
+            m_animGlowColor->setEndValue(QColor(255,119,170,200));
+            m_animGlowColor->start();
+        }
+        else
+        {
+            m_animHeight->stop();
+            m_animHeight->setStartValue(height());
+            m_animHeight->setEndValue(m_baseHeight);
+            m_animHeight->start();
+
+            m_animTopMargin->stop();
+            m_animTopMargin->setStartValue(topMargin());
+            m_animTopMargin->setEndValue(0);
+            m_animTopMargin->start();
+
+            m_animBottomMargin->stop();
+            m_animBottomMargin->setStartValue(bottomMargin());
+            m_animBottomMargin->setEndValue(0);
+            m_animBottomMargin->start();
+
+            m_animGlowRadius->stop();
+            m_animGlowRadius->setStartValue(glowRadius());
+            m_animGlowRadius->setEndValue(0);
+            m_animGlowRadius->start();
+
+            m_animGlowColor->stop();
+            m_animGlowColor->setStartValue(glowColor());
+            m_animGlowColor->setEndValue(QColor(Qt::transparent));
+            m_animGlowColor->start();
+        }
+    }
+
+protected:
+    void enterEvent(QEvent *event) override {
+        // 高度动画
+        m_animHeight->stop();
+        m_animHeight->setStartValue(height());
+        m_animHeight->setEndValue(m_baseHeight + m_expandSize * 2);
+        m_animHeight->start();
+
+        // 边距动画 - 向上下两侧挤开
+        m_animTopMargin->stop();
+        m_animTopMargin->setStartValue(topMargin());
+        m_animTopMargin->setEndValue(m_expandSize);
+        m_animTopMargin->start();
+
+        m_animBottomMargin->stop();
+        m_animBottomMargin->setStartValue(bottomMargin());
+        m_animBottomMargin->setEndValue(m_expandSize);
+        m_animBottomMargin->start();
+
+        // 光晕动画
+        m_animGlowRadius->stop();
+        m_animGlowRadius->setStartValue(glowRadius());
+        m_animGlowRadius->setEndValue(40);
+        m_animGlowRadius->start();
+
+        m_animGlowColor->stop();
+        m_animGlowColor->setStartValue(glowColor());
+        m_animGlowColor->setEndValue(QColor(255, 119, 170, 200));
+        m_animGlowColor->start();
+
+        QWidget::enterEvent(event);
+    }
+
+    void leaveEvent(QEvent *event) override {
+        // 恢复高度
+        m_animHeight->stop();
+        m_animHeight->setStartValue(height());
+        m_animHeight->setEndValue(m_baseHeight);
+        m_animHeight->start();
+
+        // 恢复边距
+        m_animTopMargin->stop();
+        m_animTopMargin->setStartValue(topMargin());
+        m_animTopMargin->setEndValue(0);
+        m_animTopMargin->start();
+
+        m_animBottomMargin->stop();
+        m_animBottomMargin->setStartValue(bottomMargin());
+        m_animBottomMargin->setEndValue(0);
+        m_animBottomMargin->start();
+
+        // 关闭光晕
+        m_animGlowRadius->stop();
+        m_animGlowRadius->setStartValue(glowRadius());
+        m_animGlowRadius->setEndValue(0);
+        m_animGlowRadius->start();
+
+        m_animGlowColor->stop();
+        m_animGlowColor->setStartValue(glowColor());
+        m_animGlowColor->setEndValue(QColor(Qt::transparent));
+        m_animGlowColor->start();
+
+        QWidget::leaveEvent(event);
+    }
+
+private:
+    int m_baseHeight;
+    int m_expandSize;
+    int m_topMargin = 0;
+    int m_bottomMargin = 0;
+    QGraphicsDropShadowEffect *m_glowEffect;
+    QPropertyAnimation *m_animHeight;
+    QPropertyAnimation *m_animTopMargin;
+    QPropertyAnimation *m_animBottomMargin;
+    QPropertyAnimation *m_animGlowRadius;
+    QPropertyAnimation *m_animGlowColor;
+};
+
+
 MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     : QMainWindow(parent), ui(new Ui::MainWindow), m_settings(settings)
 {
@@ -63,7 +366,7 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
 
     QTimer *refreshTimer = new QTimer(this);
     this->connect(refreshTimer, &QTimer::timeout, this, &MainWindow::refreshSessions);
-    refreshTimer->start(100); // 每100毫秒刷新一次 //动态构建音量合成器
+    refreshTimer->start(); // 每100毫秒刷新一次 //动态构建音量合成器
     // refreshSessions();
 
     this->show(); // 初始显示
@@ -174,7 +477,7 @@ void MainWindow::initTime() // 初始化
     // 读取设置
     if (!m_settings->contains("Style/RowHeight"))
     {
-        m_settings->setValue("Style/RowHeight", 90);
+        m_settings->setValue("Style/RowHeight", 70);
     }
     if (!m_settings->contains("Style/RowWidth"))
     {
@@ -185,7 +488,7 @@ void MainWindow::initTime() // 初始化
         m_settings->setValue("Style/MaxWindowHeight", 300);
     }
 
-    int rowHeight = m_settings->value("Style/RowHeight", 90).toInt();
+    int rowHeight = m_settings->value("Style/RowHeight", 70).toInt();
     int rowWidth = m_settings->value("Style/RowWidth", 200).toInt();
     int maxHeight = m_settings->value("Style/MaxWindowHeight", 300).toInt();
     this->rowHeight = rowHeight;
@@ -260,20 +563,23 @@ void MainWindow::refreshSessions() // 刷新音频会话
         }
     }
 
-    int totalHeight = ui->sessionLayout->count() * rowHeight + 12;
+    // ⚠️ 先更新 spacer / fade
+    initUi(false);
+
+    // 让 Qt 按真实布局算高度（包含 spacer + 行动画）
+    ui->sessionContainer->adjustSize();
+    int totalHeight = ui->sessionContainer->sizeHint().height();
 
     int actualHeight = qMin(totalHeight, maxWindowHeight);
     int windowWidth = rowWidth * 2;
 
     this->setFixedSize(windowWidth, actualHeight);
 
-    // 若使用 QScrollArea，可同步更新高度限制：
     if (ui->scrollArea)
     {
         ui->sessionContainer->setFixedHeight(totalHeight);
         ui->scrollArea->setFixedHeight(actualHeight);
     }
-    initUi(false); // 重新计算遮罩高度
 }
 
 bool MainWindow::shouldFilterOut(DWORD pid, ISimpleAudioVolume *volume) // 过滤条件
@@ -390,98 +696,8 @@ QList<SessionInfo> MainWindow::scanSessions() // 枚举当前系统的所有音�
 
 QWidget *MainWindow::createSessionRow(DWORD pid, ISimpleAudioVolume *volume) // 创建 UI 行
 {
-    QWidget *row = new QWidget;
-    row->setMinimumHeight(rowHeight);
-    row->setAttribute(Qt::WA_TranslucentBackground);
-    row->setStyleSheet(R"(background: transparent;)");
-
-    QHBoxLayout *layout = new QHBoxLayout(row);
-    layout->setContentsMargins(10, 6, 10, 6);
-    layout->setSpacing(8);
-
-    // -------- 音量条 --------
-    QSlider *slider = new QSlider(Qt::Horizontal);
-    slider->setRange(0, 100);
-    slider->setInvertedAppearance(true);
-    slider->setInvertedControls(false);
-    slider->setMinimumWidth(rowWidth);
-    slider->setFixedHeight(32);
-
-    slider->setStyleSheet(R"(
-        QSlider {
-            background: transparent;
-        }
-        QSlider::groove:horizontal {
-            height: 8px;
-            background: #ffe4f0;
-            border-radius: 4px;
-        }
-        QSlider::handle:horizontal {
-            width: 20px;
-            height: 20px;
-            background: #ff77aa;
-            border: 2px solid white;
-            margin: -8px 0;
-            border-radius: 10px;
-        }
-        QSlider::sub-page:horizontal {
-            background: #eee;
-            border-radius: 4px;
-        }
-        QSlider::add-page:horizontal {
-            background: #ffb6d5;
-            border-radius: 4px;
-        }
-    )");
-
-    float vol = 0.0f;
-    volume->GetMasterVolume(&vol);
-    slider->setValue(int(vol * 100));
-
-    connect(slider, &QSlider::valueChanged, this, [volume](int v)
-            { volume->SetMasterVolume(v / 100.0f, nullptr); });
-
-    // -------- 获取图标 --------
-    QPixmap iconPixmap;
-    {
-        HANDLE hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-        if (hProc)
-        {
-            wchar_t exePath[MAX_PATH] = {};
-            DWORD size = MAX_PATH;
-            if (QueryFullProcessImageNameW(hProc, 0, exePath, &size))
-            {
-                SHFILEINFOW info{};
-                if (SHGetFileInfoW(exePath, 0, &info, sizeof(info), SHGFI_ICON | SHGFI_LARGEICON))
-                {
-                    iconPixmap = QtWin::fromHICON(info.hIcon);
-                    DestroyIcon(info.hIcon);
-                }
-            }
-            CloseHandle(hProc);
-        }
-    }
-
-    QLabel *icon = new QLabel;
-    icon->setObjectName("sessionIcon");
-    icon->setFixedSize(64, 64);
-    icon->setPixmap(iconPixmap);
-    icon->setScaledContents(true);
-    icon->setStyleSheet(R"(
-        QLabel#sessionIcon {
-            background: transparent;
-            border-radius: 4px;
-            padding: 2px;
-            border: 2px solid transparent;
-        }
-        QLabel#sessionIcon:hover {
-            border: 2px solid #ffaad4;
-        }
-    )");
-
-    layout->addWidget(slider, 1);
-    layout->addWidget(icon);
-    return row;
+    std::cout << "Creating SessionRow for PID: " << pid << std::endl;
+    return new SessionRow(pid, volume, rowWidth, rowHeight);
 }
 
 void MainWindow::toggleFrameless() // 切换移动模式
@@ -609,3 +825,7 @@ void MainWindow::snapScrollToNearestRow()
     m_scrollAnim->setEndValue(targetScroll);
     m_scrollAnim->start();
 }
+
+
+
+#include "mainwindow.moc"
