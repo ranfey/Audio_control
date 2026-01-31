@@ -28,18 +28,22 @@ find_package(Qt5 COMPONENTS Widgets REQUIRED WinExtras)
 
 if(ANDROID)
   add_library(Audio_control SHARED
+    WIN32 
     main.cpp
     mainwindow.cpp
     mainwindow.h
     mainwindow.ui
+    icon.rc
   )
 else()
   add_executable(Audio_control
+    WIN32 
     main.cpp
     mainwindow.cpp
     mainwindow.h
     mainwindow.ui
     ${RESOURCES}
+    icon.rc
   )
 endif()
 

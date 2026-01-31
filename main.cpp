@@ -13,9 +13,7 @@ int main(int argc, char *argv[])
     QString iniPath = QCoreApplication::applicationDirPath() + "/config.ini";
     QSettings settings(iniPath, QSettings::IniFormat);
 
-    MainWindow w(&settings);
-
-    CoInitialize(nullptr);//COM 初始化
+    MainWindow w(&settings);//主窗口
 
     // 创建托盘图标
     QSystemTrayIcon *trayIcon = new QSystemTrayIcon(QIcon(":/img/icon.ico"));

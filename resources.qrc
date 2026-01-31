@@ -3,5 +3,6 @@
   <qresource prefix="/">
     <file>img/icon.ico</file>
     <file>img/icon.png</file>
+    <file>icon.rc</file>
   </qresource>
 </RCC>

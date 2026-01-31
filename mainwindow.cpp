@@ -2,7 +2,7 @@
 #include "./ui_mainwindow.h"
 
 #include <QSettings>
-#include <QtWin>        // 来自 QtWinExtras
+#include <QtWin>
 #include <shellapi.h>
 #include <shlobj.h>
 #include <QScrollArea>
@@ -18,6 +18,7 @@ MainWindow::MainWindow(QSettings *settings , QWidget *parent)
     , m_settings(settings)
 {
     ui->setupUi(this);
+    setWindowIcon(QIcon(":/img/icon.ico"));
 
     // 读取设置
     int rowHeight = m_settings->value("Style/RowHeight", 90).toInt();
@@ -41,9 +42,9 @@ MainWindow::MainWindow(QSettings *settings , QWidget *parent)
 
     setAttribute(Qt::WA_TranslucentBackground);//透明窗口
 
-    QPalette palette = QPalette();
-    palette.setColor(QPalette::Background, QColor(100,100,100,2));//伪造透明阻止鼠标穿透，傻逼完了
-    setPalette(palette);
+    QPalette Fuck = QPalette();
+    Fuck.setColor(QPalette::Background, QColor(100,100,100,2));//伪造透明阻止鼠标穿透，傻逼完了
+    setPalette(Fuck);
 
     enumerateAudioSessions();//动态构建音量合成器
     
@@ -100,7 +101,7 @@ void MainWindow::enumerateAudioSessions()
         (void**)&deviceEnumerator
     );
 
-    // 获取默认输出设备（扬声器 / 耳机）
+    // 获取默认输出设备
     deviceEnumerator->GetDefaultAudioEndpoint(
         eRender,
         eConsole,
