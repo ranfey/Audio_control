@@ -19,6 +19,10 @@
 
 在这个喧嚣的数字世界里，我们希望能给你带来最**自然、流畅**的听觉管理体验。无论是调节系统总音量，还是单独控制某个调皮的游戏或音乐软件，它都能优雅搞定。乖巧地在桌面，随叫随到，不仅好用，而且**可爱**！( ⚫︎ ‿ ⚫︎ )
 
+<p align="center">
+  <img src="img\demo.gif" alt="Audio Control demo">
+</p>
+
 ## ✨ 特性 | Features
 
 *   **🍬 萌系 UI 设计**：精致的界面布局，视觉舒适，看着就很解压。
@@ -92,9 +96,7 @@ Audio_control/
 <a href="https://github.com/ranfey/Audio_control/contributors" target="_blank">
   <img
     src="https://contrib.rocks/image?repo=ranfey/Audio_control"
-    alt="contributors"
   />
-
   <img
     src="img/chatgpt.png"
     alt="ChatGPT"
@@ -104,7 +106,6 @@ Audio_control/
       width:64px;
     "
   />
-
   <img
     src="img/Gemini.png"
     alt="Gemini"
