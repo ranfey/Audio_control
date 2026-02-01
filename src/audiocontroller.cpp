@@ -3,9 +3,48 @@
 #include <QSet>
 #include <QDebug>
 
-AudioController::AudioController(QObject *parent) : QObject(parent) {
+AudioController::AudioController(QObject *parent) : QObject(parent), m_settings(nullptr) {
     m_timer = new QTimer(this);
     connect(m_timer, &QTimer::timeout, this, &AudioController::refresh);
+    loadSettings(); // 加载默认配置
+}
+
+AudioController::AudioController(QSettings *settings, QObject *parent) 
+    : QObject(parent), m_settings(settings) 
+{
+    m_timer = new QTimer(this);
+    connect(m_timer, &QTimer::timeout, this, &AudioController::refresh);
+    loadSettings();
+}
+
+void AudioController::setSettings(QSettings *settings)
+{
+    m_settings = settings;
+    loadSettings();
+}
+
+void AudioController::loadSettings()
+{
+    // 默认列表
+    static const QStringList defaultSkipNames = {
+        "system", "idle", "audiodg.exe", "runtimebroker.exe"};
+    
+    if (m_settings)
+    {
+        if (!m_settings->contains("Filter/SkipNames"))
+        {
+            m_settings->setValue("Filter/SkipNames", defaultSkipNames);
+        }
+        
+        m_skipNames = m_settings->value("Filter/SkipNames", defaultSkipNames).toStringList();
+        
+        // 确保全小写，方便比对
+        for (auto &s : m_skipNames) s = s.toLower();
+    }
+    else
+    {
+        m_skipNames = defaultSkipNames;
+    }
 }
 
 AudioController::~AudioController() {
@@ -52,10 +91,8 @@ bool AudioController::shouldFilterOut(DWORD pid, ISimpleAudioVolume *volume, con
 
     QString exeName = QFileInfo(exePath).fileName().toLower();
 
-    // 默认黑名单，屏蔽系统服务或无意义进程
-    static const QStringList defaultSkipNames = {
-        "system", "idle", "audiodg.exe", "runtimebroker.exe"};
-    if (defaultSkipNames.contains(exeName))
+    // 根据配置过滤
+    if (m_skipNames.contains(exeName))
         return true;
 
     float selfVol = 0.0f;

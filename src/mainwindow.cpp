@@ -7,8 +7,8 @@
 class ScrollFadeMask : public QWidget
 {
 public:
-    explicit ScrollFadeMask(QWidget *parent = nullptr)
-        : QWidget(parent)
+    explicit ScrollFadeMask(QWidget *parent = nullptr,int rowHeight = 0)
+        : QWidget(parent), rowHeight(rowHeight)
     {
         setAttribute(Qt::WA_TransparentForMouseEvents);
         setAttribute(Qt::WA_NoSystemBackground);
@@ -23,6 +23,7 @@ public:
     }
 
 protected:
+    int rowHeight = 0;
     void paintEvent(QPaintEvent *)
     {
         if (fadeHeight <= 0)
@@ -40,12 +41,16 @@ protected:
 
         p.fillRect(0, 0, width(), fadeHeight, top);
 
-        // 下遮罩（alpha: 1 → 0）
-        QLinearGradient bottom(0, height() - fadeHeight, 0, height());
+        // 下遮罩（alpha: 1 → 0），整体上移 rowHeight
+        QLinearGradient bottom(0, height() - fadeHeight - rowHeight, 0, height() - rowHeight);
         bottom.setColorAt(0.0, QColor(0, 0, 0, 255));
         bottom.setColorAt(1.0, QColor(0, 0, 0, 0));
 
-        p.fillRect(0, height() - fadeHeight, width(), fadeHeight, bottom);
+        p.fillRect(0, height() - fadeHeight - rowHeight, width(), fadeHeight, bottom);
+
+        // 完全透明遮罩，高度为 rowHeight
+        p.fillRect(0, height() - rowHeight, width(), rowHeight, QColor(0, 0, 0, 0));
+
     }
 
 
@@ -142,7 +147,7 @@ void MainWindow::initUi()
     
     QWidget *vp = ui->scrollArea->viewport();
 
-    auto *mask = new ScrollFadeMask(vp);
+    auto *mask = new ScrollFadeMask(vp, rowHeight);
     mask->raise();
     mask->resize(vp->size());
     m_fadeMask = mask;
@@ -169,37 +174,47 @@ void MainWindow::initWindowStyle()
 {
     this->setWindowIcon(QIcon(":/img/icon.ico"));
 
+    // 定义默认配置
+    QMap<QString, int> defaultSettings = {
+        {"Style/RowHeight", 70},
+        {"Style/RowWidth", 200},
+        {"Style/MaxWindowHeight", 500}
+    };
+
     // 读取或设置默认配置
-    if (!m_settings->contains("Style/RowHeight"))
-    {
-        m_settings->setValue("Style/RowHeight", 70);
-    }
-    if (!m_settings->contains("Style/RowWidth"))
-    {
-        m_settings->setValue("Style/RowWidth", 200);
-    }
-    if (!m_settings->contains("Style/MaxWindowHeight"))
-    {
-        m_settings->setValue("Style/MaxWindowHeight", 300);
+    for (auto it = defaultSettings.begin(); it != defaultSettings.end(); ++it) {
+        if (!m_settings->contains(it.key())) {
+            m_settings->setValue(it.key(), it.value());
+        }
     }
 
-    int rowHeight = m_settings->value("Style/RowHeight", 70).toInt();
-    int rowWidth = m_settings->value("Style/RowWidth", 200).toInt();
-    int maxHeight = m_settings->value("Style/MaxWindowHeight", 300).toInt();
-    this->rowHeight = rowHeight;
-    this->rowWidth = rowWidth;
-    this->maxWindowHeight = maxHeight;
+    // 读取配置值
+    this->rowHeight = m_settings->value("Style/RowHeight", defaultSettings["Style/RowHeight"]).toInt();
+    this->rowWidth = m_settings->value("Style/RowWidth", defaultSettings["Style/RowWidth"]).toInt();
+    this->maxWindowHeight = m_settings->value("Style/MaxWindowHeight", defaultSettings["Style/MaxWindowHeight"]).toInt();
+    
+    // 读取窗口层级，默认为 LevelTop (2)
+    int level = m_settings->value("Style/WindowLevel", LevelTop).toInt();
+    m_windowLevel = static_cast<WindowLevel>(level);
+
     // 退出状态
     m_settings->beginGroup("MainWindow");
     this->restoreGeometry(m_settings->value("geometry").toByteArray());
     this->restoreState(m_settings->value("windowState").toByteArray());
     m_settings->endGroup();
 
-    // 无边框 + 不显示任务栏 + 永远在普通窗口下面 (初始状态)
-    this->setWindowFlags(
-        Qt::FramelessWindowHint |
-        Qt::Tool |
-        Qt::WindowStaysOnBottomHint);
+    // 应用初始窗口 Flags
+    Qt::WindowFlags flags = Qt::Tool;
+    
+    if (frameless)
+        flags |= Qt::FramelessWindowHint;
+
+    if (m_windowLevel == LevelTop)
+        flags |= Qt::WindowStaysOnTopHint;
+    else if (m_windowLevel == LevelBottom)
+        flags |= Qt::WindowStaysOnBottomHint;
+
+    this->setWindowFlags(flags);
 
     this->setAttribute(Qt::WA_TranslucentBackground); // 透明窗口
 
@@ -248,14 +263,14 @@ void MainWindow::updateWindowGeometry()
     int count = (need + rowHeight - 1) / rowHeight;
 
     // ---------- 顶部 ----------
-    while (topSpacers.size() < count)
+    while (topSpacers.size() < count-1)
     {
         QWidget *w = new QWidget;
         w->setFixedHeight(rowHeight);
         ui->sessionLayout->insertWidget(0, w);
         topSpacers.append(w);
     }
-    while (topSpacers.size() > count)
+    while (topSpacers.size() > count-1)
     {
         QWidget *w = topSpacers.takeLast();
         ui->sessionLayout->removeWidget(w);
@@ -323,18 +338,55 @@ void MainWindow::toggleInteractMode()
     // 先隐藏窗口以应用标志更改
     this->hide();
 
+    Qt::WindowFlags flags = Qt::Tool;
     if (frameless)
     {
-        // 无边框工具窗口，底部显示
-        this->setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnBottomHint);
-    }
-    else
-    {
-        // 只有底部显示，允许系统边框（以便移动/调整大小，如果系统允许）
-        this->setWindowFlags(Qt::Tool | Qt::WindowStaysOnBottomHint); 
+        flags |= Qt::FramelessWindowHint;
     }
 
+    if (m_windowLevel == LevelTop)
+    {
+        flags |= Qt::WindowStaysOnTopHint;
+    }
+    else if (m_windowLevel == LevelBottom)
+    {
+        flags |= Qt::WindowStaysOnBottomHint;
+    }
+
+    this->setWindowFlags(flags);
+
     // 重新显示窗口
+    this->show();
+}
+
+// 设置窗口层级
+void MainWindow::setWindowLevel(WindowLevel level)
+{
+    if (m_windowLevel == level) return;
+    m_windowLevel = level;
+
+    // 保存设置
+    m_settings->setValue("Style/WindowLevel", (int)m_windowLevel);
+
+    // 应用更改
+    this->hide();
+
+    Qt::WindowFlags flags = Qt::Tool;
+    if (frameless)
+    {
+        flags |= Qt::FramelessWindowHint;
+    }
+
+    if (m_windowLevel == LevelTop)
+    {
+        flags |= Qt::WindowStaysOnTopHint;
+    }
+    else if (m_windowLevel == LevelBottom)
+    {
+        flags |= Qt::WindowStaysOnBottomHint;
+    }
+
+    this->setWindowFlags(flags);
     this->show();
 }
 

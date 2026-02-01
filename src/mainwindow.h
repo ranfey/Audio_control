@@ -34,8 +34,17 @@ QT_END_NAMESPACE
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
+public:
+    enum WindowLevel {
+        LevelBottom = 0,
+        LevelNormal = 1,
+        LevelTop = 2
+    };
+    Q_ENUM(WindowLevel)
+
 private:
     bool frameless = true;
+    WindowLevel m_windowLevel = LevelTop;
     int maxWindowHeight = 0;
     int rowWidth = 0;
     int rowHeight = 0;
@@ -69,6 +78,7 @@ public:
     ~MainWindow();
 
     void toggleInteractMode(); // 切换交互模式（移动/锁定）
+    void setWindowLevel(WindowLevel level); // 设置窗口层级
 
     void snapScrollToNearestRow(); // 滚动吸附
 

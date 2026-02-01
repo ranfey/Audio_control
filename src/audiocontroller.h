@@ -4,6 +4,7 @@
 #include <QMap>
 #include <QTimer>
 #include <QString>
+#include <QSettings>
 #include <windows.h>
 #include <mmdeviceapi.h>
 #include <audiopolicy.h>
@@ -19,9 +20,11 @@ class AudioController : public QObject {
     Q_OBJECT
 public:
     explicit AudioController(QObject *parent = nullptr);
+    AudioController(QSettings *settings, QObject *parent = nullptr); // 新增带配置的构造函数
     ~AudioController();
 
     void start();
+    void setSettings(QSettings *settings); // 支持动态更新配置
 
 public slots:
     void setVolume(DWORD pid, int volumePercent);
@@ -39,7 +42,10 @@ private:
 
     QMap<DWORD, InternalSession> m_sessions;
     QTimer *m_timer;
+    QSettings *m_settings = nullptr; // 配置
+    QStringList m_skipNames; // 缓存的屏蔽列表
 
     bool shouldFilterOut(DWORD pid, ISimpleAudioVolume *volume, const QString &path);
+    void loadSettings(); // 加载配置
     QString getProcessPath(DWORD pid);
 };

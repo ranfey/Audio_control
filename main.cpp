@@ -13,7 +13,9 @@ int main(int argc, char *argv[])
     QString iniPath = QCoreApplication::applicationDirPath() + "/config.ini";
     QSettings settings(iniPath, QSettings::IniFormat);
 
-    AudioController controller;
+    // 传入配置
+    AudioController controller(&settings);
+    
     MainWindow w(&settings);//主窗口
 
     QObject::connect(&controller, &AudioController::sessionAdded, &w, &MainWindow::onSessionAdded);

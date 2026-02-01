@@ -2,9 +2,10 @@
 #include <QPainter>
 #include <shellapi.h>
 #include <QtWin>
+#include <QTimer>
 
 SessionRow::SessionRow(const AudioSessionData &data, int w, int h, QWidget *parent)
-    : QWidget(parent), m_baseHeight(h), m_expandSize((h * 2 - h) / 2), m_pid(data.pid)
+    : QWidget(parent), m_baseHeight(h), m_expandSize(h / 2), m_pid(data.pid)
 {
     // 初始化基础属性
     this->setMinimumHeight(h);
@@ -14,7 +15,7 @@ SessionRow::SessionRow(const AudioSessionData &data, int w, int h, QWidget *pare
     this->setStyleSheet("background: transparent;");
 
     QHBoxLayout *layout = new QHBoxLayout(this);
-    layout->setContentsMargins(10, 6, 10, 6);
+    updateMargins();
     layout->setSpacing(8);
 
     // [控件 1] 音量滑动条
@@ -127,6 +128,9 @@ SessionRow::SessionRow(const AudioSessionData &data, int w, int h, QWidget *pare
     connect(m_animHeight, &QPropertyAnimation::valueChanged, this, &SessionRow::layoutRequest);
     connect(m_animTopMargin, &QPropertyAnimation::valueChanged, this, &SessionRow::layoutRequest);
     connect(m_animBottomMargin, &QPropertyAnimation::valueChanged, this, &SessionRow::layoutRequest);
+    QTimer::singleShot(0, this, [this](){
+        emit layoutRequest();
+    });
 }
 
 SessionRow::~SessionRow()
