@@ -9,9 +9,8 @@
 #include <QEvent>
 #include <QTimer>
 #include <Windows.h>
-#include "audiocontroller.h" // Needed for AudioSessionData definition if not forward declared well, but struct is simple.
+#include "audiocontroller.h"
 
-// Forward declaration
 class QGraphicsDropShadowEffect;
 class QPropertyAnimation;
 

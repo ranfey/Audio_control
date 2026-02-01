@@ -54,9 +54,6 @@ private:
 };
 
 
-// SessionRow removed because it is now in its own file
-
-
 MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     : QMainWindow(parent), ui(new Ui::MainWindow), m_settings(settings)
 {
@@ -64,7 +61,7 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
 
     initWindowStyle(); // 初始化窗口样式
 
-    initUi(true); // 构建 UI 元素
+    initUi(); // 构建 UI 元素
 
     this->show(); // 显示窗口
 }
@@ -106,7 +103,7 @@ MainWindow::~MainWindow()
 }
 
 // 初始化/构建界面 UI 元素
-void MainWindow::initUi(bool forceCreate)
+void MainWindow::initUi()
 {
     ui->scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     ui->scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -114,68 +111,44 @@ void MainWindow::initUi(bool forceCreate)
     // 关键：在 viewport 上装事件过滤器，拦截 wheel
     ui->scrollArea->viewport()->installEventFilter(this);
 
-    // 预建一个动画（也可以懒加载）
+    // 预建一个动画
     m_scrollAnim = new QPropertyAnimation(ui->scrollArea->verticalScrollBar(),
-                                      QByteArrayLiteral("value"),
-                                      this);
+                                        QByteArrayLiteral("value"),
+                                        this);
 
     m_scrollAnim->setEasingCurve(QEasingCurve::OutCubic);
     m_scrollAnim->setDuration(180);
-
-
 
     int need =maxWindowHeight/1.8 - rowHeight/2;
     int count = (need + rowHeight - 1) / rowHeight;
 
     // ---------- 顶部 ----------
-    while (topSpacers.size() < count)
+    for (int i = 0; i < count; ++i)
     {
         QWidget *w = new QWidget;
         w->setFixedHeight(rowHeight);
         ui->sessionLayout->insertWidget(0, w);
         topSpacers.append(w);
     }
-    while (topSpacers.size() > count)
-    {
-        QWidget *w = topSpacers.takeLast();
-        ui->sessionLayout->removeWidget(w);
-        w->deleteLater();
-    }
 
     // ---------- 底部 ----------
-    while (bottomSpacers.size() < count)
+    for (int i = 0; i < count; ++i)
     {
         QWidget *w = new QWidget;
         w->setFixedHeight(rowHeight);
         ui->sessionLayout->addWidget(w);
         bottomSpacers.append(w);
     }
-    while (bottomSpacers.size() > count)
-    {
-        QWidget *w = bottomSpacers.takeLast();
-        ui->sessionLayout->removeWidget(w);
-        w->deleteLater();
-    }
-
-
-
     
     QWidget *vp = ui->scrollArea->viewport();
 
-    // ---------- 1. 创建（只会发生一次） ----------
-    if (!m_fadeMask || forceCreate)
-    {
-        if (m_fadeMask)
-            m_fadeMask->deleteLater();
+    auto *mask = new ScrollFadeMask(vp);
+    mask->raise();
+    mask->resize(vp->size());
+    m_fadeMask = mask;
 
-        auto *mask = new ScrollFadeMask(vp);
-        mask->raise();
-        mask->resize(vp->size());
-        m_fadeMask = mask;
-
-        // 只在这里装一次过滤器
-        vp->installEventFilter(this);
-    }
+    // 只在这里装一次过滤器
+    vp->installEventFilter(this);
 
     // ---------- 2. 计算遮罩高度（合并 calcFadeHeight） ----------
     constexpr double ROW_RATIO  = 0.8;
@@ -188,7 +161,6 @@ void MainWindow::initUi(bool forceCreate)
     int fade   = qBound(MIN_PX, qMin(byRow, byView), MAX_PX);
 
     // ---------- 3. 应用 ----------
-    ScrollFadeMask *mask = static_cast<ScrollFadeMask*>(m_fadeMask);
     mask->setFadeHeight(fade);
 }
 
@@ -271,7 +243,57 @@ void MainWindow::onSessionRemoved(DWORD pid)
 
 void MainWindow::updateWindowGeometry()
 {
-    initUi(false);
+    // 更新 Spacers 数量
+    int need = maxWindowHeight/1.8 - rowHeight/2;
+    int count = (need + rowHeight - 1) / rowHeight;
+
+    // ---------- 顶部 ----------
+    while (topSpacers.size() < count)
+    {
+        QWidget *w = new QWidget;
+        w->setFixedHeight(rowHeight);
+        ui->sessionLayout->insertWidget(0, w);
+        topSpacers.append(w);
+    }
+    while (topSpacers.size() > count)
+    {
+        QWidget *w = topSpacers.takeLast();
+        ui->sessionLayout->removeWidget(w);
+        w->deleteLater();
+    }
+
+    // ---------- 底部 ----------
+    while (bottomSpacers.size() < count)
+    {
+        QWidget *w = new QWidget;
+        w->setFixedHeight(rowHeight);
+        ui->sessionLayout->addWidget(w);
+        bottomSpacers.append(w);
+    }
+    while (bottomSpacers.size() > count)
+    {
+        QWidget *w = bottomSpacers.takeLast();
+        ui->sessionLayout->removeWidget(w);
+        w->deleteLater();
+    }
+
+    // 计算遮罩高度
+    constexpr double ROW_RATIO  = 0.8;
+    constexpr double VIEW_RATIO = 0.3;
+    constexpr int MIN_PX = 150;
+    constexpr int MAX_PX = 500;
+
+    int byRow  = int(rowHeight * ROW_RATIO);
+    int byView = int(maxWindowHeight * VIEW_RATIO);
+    int fade   = qBound(MIN_PX, qMin(byRow, byView), MAX_PX);
+
+    if (m_fadeMask)
+    {
+        ScrollFadeMask *mask = static_cast<ScrollFadeMask*>(m_fadeMask);
+        mask->setFadeHeight(fade);
+        mask->resize(ui->scrollArea->viewport()->size());
+    }
+
     ui->sessionContainer->adjustSize();
     int totalHeight = ui->sessionContainer->sizeHint().height();
     int actualHeight = qMin(totalHeight, maxWindowHeight);
@@ -289,7 +311,7 @@ QWidget *MainWindow::createSessionRow(const AudioSessionData &data)
 {
     auto *row = new SessionRow(data, rowWidth, rowHeight);
     connect(row, &SessionRow::volumeChanged, this, &MainWindow::volumeChanged);
-    connect(row, &SessionRow::layoutRequest, this, &MainWindow::updateWindowGeometry);
+    connect(row, &SessionRow::layoutRequest, this, &MainWindow::updateWindowGeometry);//ui更新发生内存泄漏
     return row;
 }
 
@@ -301,7 +323,6 @@ void MainWindow::toggleInteractMode()
     // 先隐藏窗口以应用标志更改
     this->hide();
 
-    // 修改窗口标志
     if (frameless)
     {
         // 无边框工具窗口，底部显示
@@ -310,7 +331,6 @@ void MainWindow::toggleInteractMode()
     else
     {
         // 只有底部显示，允许系统边框（以便移动/调整大小，如果系统允许）
-        // 注意：根据原逻辑，这里是移除 FramelessWindowHint
         this->setWindowFlags(Qt::Tool | Qt::WindowStaysOnBottomHint); 
     }
 

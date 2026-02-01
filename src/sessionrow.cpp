@@ -21,7 +21,7 @@ SessionRow::SessionRow(const AudioSessionData &data, int w, int h, QWidget *pare
     QSlider *slider = new QSlider(Qt::Horizontal);
     slider->setRange(0, 100);
     slider->setInvertedAppearance(true);
-    slider->setInvertedControls(false); // 保持常规操作（右大左小？）根据InvertedAppearance可能需要调整
+    slider->setInvertedControls(false); // 保持常规操作右大左小
     slider->setMinimumWidth(w);
     slider->setFixedHeight(32);
 

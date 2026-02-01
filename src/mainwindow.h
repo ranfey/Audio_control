@@ -59,7 +59,7 @@ private:
     class SessionRow *m_focusedRow = nullptr;
 
 public:
-    void initUi(bool forceCreate); // 构建窗口 UI
+    void initUi(); // 构建窗口 UI
     void updateWindowGeometry(); // 更新窗口布局
 
     void initWindowStyle(); // 初始化窗口样式与配置
