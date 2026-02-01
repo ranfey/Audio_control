@@ -30,22 +30,30 @@ if(ANDROID)
   add_library(Audio_control SHARED
     WIN32 
     main.cpp
-    mainwindow.cpp
-    mainwindow.h
-    mainwindow.ui
-    maintray.cpp
-    maintray.h
+    src/mainwindow.cpp
+    src/mainwindow.h
+    src/mainwindow.ui
+    src/maintray.cpp
+    src/maintray.h
+    src/audiocontroller.cpp
+    src/audiocontroller.h
+    src/sessionrow.cpp
+    src/sessionrow.h
     icon.rc
   )
 else()
   add_executable(Audio_control
     WIN32 
     main.cpp
-    mainwindow.cpp
-    mainwindow.h
-    mainwindow.ui
-    maintray.cpp
-    maintray.h
+    src/mainwindow.cpp
+    src/mainwindow.h
+    src/mainwindow.ui
+    src/maintray.cpp
+    src/maintray.h
+    src/audiocontroller.cpp
+    src/audiocontroller.h
+    src/sessionrow.cpp
+    src/sessionrow.h
     ${RESOURCES}
     icon.rc
   )

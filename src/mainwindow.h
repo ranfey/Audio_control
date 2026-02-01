@@ -12,10 +12,6 @@
 #include <QLabel>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
-#include <Windows.h>
-#include <mmdeviceapi.h>
-#include <audiopolicy.h>
-#include <endpointvolume.h>
 #include <QSettings>
 #include <QPainter>
 #include <QTimer>
@@ -25,6 +21,8 @@
 #include <QPropertyAnimation>
 #include <QPointer>
 #include <QGraphicsDropShadowEffect>
+#include "audiocontroller.h"
+#include "sessionrow.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui
@@ -32,13 +30,6 @@ namespace Ui
     class MainWindow;
 }
 QT_END_NAMESPACE
-
-struct SessionInfo
-{
-    DWORD pid;
-    ISimpleAudioVolume *volume;
-    QWidget *widget;
-};
 
 class MainWindow : public QMainWindow
 {
@@ -49,7 +40,7 @@ private:
     int rowWidth = 0;
     int rowHeight = 0;
     QSettings *m_settings;
-    QMap<DWORD, SessionInfo> sessionMap;
+    QMap<DWORD, QWidget*> sessionMap;
     QWidget *m_fadeMask = nullptr;
     int m_fadeHeight = 0;
     QVector<QWidget*> topSpacers;
@@ -57,15 +48,7 @@ private:
 
     Ui::MainWindow *ui;
 
-    void refreshSessions();
-
-    QList<SessionInfo> scanSessions();
-
-    QWidget *createSessionRow(DWORD pid, ISimpleAudioVolume *volume);
-
-    QString getProcessPath(DWORD pid);
-
-    bool shouldFilterOut(DWORD pid, ISimpleAudioVolume *volume);
+    QWidget *createSessionRow(const AudioSessionData &data);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -76,17 +59,25 @@ private:
     class SessionRow *m_focusedRow = nullptr;
 
 public:
-    void initUi(bool forceCreate);
+    void initUi(bool forceCreate); // 构建窗口 UI
+    void updateWindowGeometry(); // 更新窗口布局
 
-    void initTime();
+    void initWindowStyle(); // 初始化窗口样式与配置
 
     explicit MainWindow(QSettings *settings, QWidget *parent = nullptr);
 
     ~MainWindow();
 
-    void toggleFrameless();
+    void toggleInteractMode(); // 切换交互模式（移动/锁定）
 
-    void snapScrollToNearestRow();
+    void snapScrollToNearestRow(); // 滚动吸附
+
+public slots:
+    void onSessionAdded(const AudioSessionData &data);
+    void onSessionRemoved(DWORD pid);
+
+signals:
+    void volumeChanged(DWORD pid, int volume);
 };
 
 #endif // MAINWINDOW_H
