@@ -14,6 +14,7 @@
 #include <shellapi.h>
 #include <QtWin>
 #include <QTimer>
+#include <QGraphicsOpacityEffect>
 
 class QGraphicsDropShadowEffect;
 class QPropertyAnimation;
@@ -55,6 +56,8 @@ public:
 
     void updateMargins();
 
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
 signals:
     void volumeChanged(DWORD pid, int vol);
     void layoutRequest(); // Request parent to update layout
@@ -76,6 +79,14 @@ private:
     DWORD m_pid;
     QGraphicsDropShadowEffect *m_glowEffect;
     QLabel *m_iconLabel = nullptr; 
+// 静音相关
+    QSlider *m_slider = nullptr;
+    bool m_isMuted = false;
+    int m_lastVolume = 50;
+    QPixmap m_originPixmap;
+    QPropertyAnimation *m_animMute = nullptr;
+    void toggleMute();
+
     QPropertyAnimation *m_animHeight;
     QPropertyAnimation *m_animTopMargin;
     QPropertyAnimation *m_animBottomMargin;

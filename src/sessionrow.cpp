@@ -22,15 +22,16 @@ SessionRow::SessionRow(const AudioSessionData &data, int w, int h, QWidget *pare
     layout->setSpacing(8);
 
     // [控件 1] 音量滑动条
-    QSlider *slider = new QSlider(Qt::Horizontal);
-    slider->setRange(0, 100);
-    slider->setInvertedAppearance(true);
-    slider->setInvertedControls(false); // 保持常规操作右大左小
-    slider->setMinimumWidth(w);
-    slider->setFixedHeight(32);
+    m_slider = new QSlider(Qt::Horizontal);
+    m_slider->setRange(0, 100);
+    m_slider->setInvertedAppearance(true);
+    m_slider->setInvertedControls(false); // 保持常规操作右大左小
+    m_slider->setMinimumWidth(w);
+    // 移除固定高度，允许垂直扩展以增加触摸区域
+    m_slider->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
     // 设置 QSlider 样式 (粉色系)
-    slider->setStyleSheet(R"(
+    m_slider->setStyleSheet(R"(
         QSlider {
             background: transparent;
         }
@@ -57,16 +58,31 @@ SessionRow::SessionRow(const AudioSessionData &data, int w, int h, QWidget *pare
         }
     )");
 
-    slider->setValue(int(data.volume * 100));
+    m_slider->setValue(int(data.volume * 100));
 
+    const int initialW = w; 
+    
     // 连接信号：当值改变时，发送音量变更信号
-    connect(slider, &QSlider::valueChanged, this, [this](int v)
+    connect(m_slider, &QSlider::valueChanged, this, [this](int v)
             {
+                // 如果用户手动拖动，更新静音状态
+                if (v > 0 && m_isMuted) {
+                    m_isMuted = false;
+                    m_iconLabel->setPixmap(m_originPixmap);
+                    m_iconLabel->setStyleSheet(R"(
+                        QLabel#sessionIcon {
+                            background: transparent;
+                            border-radius: 4px;
+                            padding: 2px;
+                            border: 2px solid transparent;
+                        }
+                    )");
+                }
                 emit volumeChanged(m_pid, v);
             });
 
     // [控件 2] 进程图标
-    QPixmap iconPixmap;
+    m_originPixmap = QPixmap();
     if (!data.exePath.isEmpty())
     {
         SHFILEINFOW info{};
@@ -74,7 +90,7 @@ SessionRow::SessionRow(const AudioSessionData &data, int w, int h, QWidget *pare
         std::wstring wpath = data.exePath.toStdWString();
         if (SHGetFileInfoW(wpath.c_str(), 0, &info, sizeof(info), SHGFI_ICON | SHGFI_LARGEICON))
         {
-            iconPixmap = QtWin::fromHICON(info.hIcon);
+            m_originPixmap = QtWin::fromHICON(info.hIcon);
             DestroyIcon(info.hIcon);
         }
     }
@@ -82,7 +98,7 @@ SessionRow::SessionRow(const AudioSessionData &data, int w, int h, QWidget *pare
     m_iconLabel = new QLabel;
     m_iconLabel->setObjectName("sessionIcon");
     m_iconLabel->setFixedSize(m_iconSize, m_iconSize);
-    m_iconLabel->setPixmap(iconPixmap);
+    m_iconLabel->setPixmap(m_originPixmap);
     m_iconLabel->setScaledContents(true);
     m_iconLabel->setStyleSheet(R"(
         QLabel#sessionIcon {
@@ -92,8 +108,9 @@ SessionRow::SessionRow(const AudioSessionData &data, int w, int h, QWidget *pare
             border: 2px solid transparent;
         }
     )");
+    m_iconLabel->installEventFilter(this); // 安装事件过滤器
 
-    layout->addWidget(slider, 1);
+    layout->addWidget(m_slider, 1);
     layout->addWidget(m_iconLabel);
 
     // [视觉效果] 边缘光晕阴影
@@ -107,6 +124,11 @@ SessionRow::SessionRow(const AudioSessionData &data, int w, int h, QWidget *pare
     m_animHeight = new QPropertyAnimation(this, "fixedHeight", this);
     m_animHeight->setDuration(500);
     m_animHeight->setEasingCurve(QEasingCurve::OutCubic);
+    
+    // 静音 Q 弹动画 (复用 iconSize 属性，但使用不同曲线)
+    m_animMute = new QPropertyAnimation(this, "iconSize", this);
+    m_animMute->setDuration(1000);
+    m_animMute->setEasingCurve(QEasingCurve::OutElastic); // Q 弹效果
 
     m_animTopMargin = new QPropertyAnimation(this, "topMargin", this);
     m_animTopMargin->setDuration(500);
@@ -256,6 +278,9 @@ void SessionRow::leaveEvent(QEvent *event) {
     m_animLeftMargin->start();
 
     // 恢复图标
+    if (m_animMute->state() == QAbstractAnimation::Running) {
+        m_animMute->stop();
+    }
     m_animIconSize->stop();
     m_animIconSize->setStartValue(iconSize());
     m_animIconSize->setEndValue(defaultIconSize);
@@ -273,4 +298,53 @@ void SessionRow::leaveEvent(QEvent *event) {
     m_animGlowColor->start();
 
     QWidget::leaveEvent(event);
+}
+
+bool SessionRow::eventFilter(QObject *watched, QEvent *event) {
+    if (watched == m_iconLabel && event->type() == QEvent::MouseButtonRelease) {
+        toggleMute();
+        return true;
+    }
+    return QWidget::eventFilter(watched, event);
+}
+
+void SessionRow::toggleMute() {
+    m_isMuted = !m_isMuted;
+
+    // 播放 Q 弹动画
+    // 先停止可能正在进行的 hover 动画
+    m_animIconSize->stop(); 
+    m_animMute->stop();
+
+    // 确定目标大小
+    int targetSize = rect().contains(mapFromGlobal(QCursor::pos())) ? (defaultIconSize * kHoverScaleFactor) : defaultIconSize;
+    
+    // 动画逻辑
+    m_animMute->setStartValue(int(targetSize * 0.7));
+    m_animMute->setEndValue(targetSize);
+    m_animMute->start();
+
+    if (m_isMuted) {
+        m_lastVolume = m_slider->value();
+        m_slider->setValue(0); // 这会触发 valueChanged 信号从而发送静音给系统
+        
+        // 视觉变灰
+        if (!m_originPixmap.isNull()) {
+            QPixmap mutedPixmap(m_originPixmap.size());
+            mutedPixmap.fill(Qt::transparent);
+            QPainter p(&mutedPixmap);
+            p.setOpacity(0.5);
+            p.drawPixmap(0, 0, m_originPixmap);
+            p.end();
+            m_iconLabel->setPixmap(mutedPixmap);
+        }
+        
+    } else {
+        // 恢复音量
+        if (m_lastVolume == 0) m_lastVolume = 30; // 避免恢复到 0
+        m_slider->setValue(m_lastVolume);
+
+        // 恢复视觉
+        m_iconLabel->setPixmap(m_originPixmap);
+    }
 }
