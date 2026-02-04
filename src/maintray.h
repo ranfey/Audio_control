@@ -6,6 +6,10 @@
 #include <QSettings>
 #include <QObject>
 #include <QWidget>
+#include <iostream>
+#include <QCoreApplication>
+#include <QDir>
+#include <shlobj.h>
 
 class MainTray : public QSystemTrayIcon
 {

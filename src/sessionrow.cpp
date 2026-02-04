@@ -1,8 +1,5 @@
 #include "sessionrow.h"
-#include <QPainter>
-#include <shellapi.h>
-#include <QtWin>
-#include <QTimer>
+
 
 SessionRow::SessionRow(const AudioSessionData &data, int w, int h, QWidget *parent)
     : QWidget(parent), m_baseHeight(h), m_expandSize(h / 2), m_pid(data.pid)

@@ -10,6 +10,10 @@
 #include <QTimer>
 #include <Windows.h>
 #include "audiocontroller.h"
+#include <QPainter>
+#include <shellapi.h>
+#include <QtWin>
+#include <QTimer>
 
 class QGraphicsDropShadowEffect;
 class QPropertyAnimation;

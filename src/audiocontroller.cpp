@@ -1,7 +1,4 @@
 #include "audiocontroller.h"
-#include <QFileInfo>
-#include <QSet>
-#include <QDebug>
 
 AudioController::AudioController(QObject *parent) : QObject(parent), m_settings(nullptr) {
     m_timer = new QTimer(this);

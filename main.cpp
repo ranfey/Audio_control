@@ -1,10 +1,21 @@
 #include "src/mainwindow.h"
 #include "src/maintray.h"
 #include "src/audiocontroller.h"
-#include <objbase.h>
+
 
 int main(int argc, char *argv[])
 {
+    HWND existingWnd = FindWindowW(NULL, L"Audio Control");
+    if (existingWnd) {
+        if (IsIconic(existingWnd)) {
+            ShowWindow(existingWnd, SW_RESTORE);
+        } else {
+            ShowWindow(existingWnd, SW_SHOW);
+        }
+        SetForegroundWindow(existingWnd);
+        return 0;
+    }
+
     CoInitialize(NULL);
     QApplication a(argc, argv);
     

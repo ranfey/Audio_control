@@ -1,11 +1,10 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
-#include <iostream>
-#include <QGraphicsDropShadowEffect>
-#include "sessionrow.h"
+
 
 class ScrollFadeMask : public QWidget
 {
+    Q_OBJECT
 public:
     explicit ScrollFadeMask(QWidget *parent = nullptr,int rowHeight = 0)
         : QWidget(parent), rowHeight(rowHeight)
@@ -68,7 +67,9 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
 
     initUi(); // 构建 UI 元素
 
-    this->show(); // 显示窗口
+    if (m_settings->value("Style/Visible", true).toBool()) {
+        this->show(); // 显示窗口
+    }
 }
 
 MainWindow::~MainWindow()
@@ -78,6 +79,8 @@ MainWindow::~MainWindow()
     m_settings->setValue("geometry", saveGeometry());
     m_settings->setValue("windowState", saveState());
     m_settings->endGroup();
+    
+    m_settings->setValue("Style/Visible", this->isVisible());
 
     // 释放 QTimer
     if (m_scrollAnim)
@@ -176,7 +179,7 @@ void MainWindow::initWindowStyle()
 
     // 定义默认配置
     QMap<QString, int> defaultSettings = {
-        {"Style/RowHeight", 70},
+        {"Style/RowHeight", 75},
         {"Style/RowWidth", 200},
         {"Style/MaxWindowHeight", 500}
     };
@@ -196,6 +199,9 @@ void MainWindow::initWindowStyle()
     // 读取窗口层级，默认为 LevelTop (2)
     int level = m_settings->value("Style/WindowLevel", LevelTop).toInt();
     m_windowLevel = static_cast<WindowLevel>(level);
+    
+    // 读取 Frameless 状态
+    this->frameless = m_settings->value("Style/Frameless", true).toBool();
 
     // 退出状态
     m_settings->beginGroup("MainWindow");
@@ -218,10 +224,9 @@ void MainWindow::initWindowStyle()
 
     this->setAttribute(Qt::WA_TranslucentBackground); // 透明窗口
 
-    // 设置透明背景并防止鼠标穿透（通过设置极其微小的透明度）
-    QPalette pal = QPalette();
-    pal.setColor(QPalette::Window, QColor(100, 100, 100, 2)); 
-    this->setPalette(pal);
+    // 初始化鼠标穿透状态
+    bool mouseThrough = m_settings->value("Style/MouseThrough", false).toBool();
+    setMouseThrough(mouseThrough);
 }
 
 
@@ -333,10 +338,19 @@ QWidget *MainWindow::createSessionRow(const AudioSessionData &data)
 // 切换窗口交互模式（移动编辑 / 只能查看）
 void MainWindow::toggleInteractMode()
 {
-    frameless = !frameless;
+    setFrameless(!frameless);
+}
+
+void MainWindow::setFrameless(bool isFrameless)
+{
+    if (frameless == isFrameless) return;
+    
+    frameless = isFrameless;
+    m_settings->setValue("Style/Frameless", frameless);
 
     // 先隐藏窗口以应用标志更改
-    this->hide();
+    bool wasVisible = this->isVisible();
+    if (wasVisible) this->hide();
 
     Qt::WindowFlags flags = Qt::Tool;
     if (frameless)
@@ -356,7 +370,7 @@ void MainWindow::toggleInteractMode()
     this->setWindowFlags(flags);
 
     // 重新显示窗口
-    this->show();
+    if (wasVisible) this->show();
 }
 
 // 设置窗口层级
@@ -388,6 +402,20 @@ void MainWindow::setWindowLevel(WindowLevel level)
 
     this->setWindowFlags(flags);
     this->show();
+}
+
+void MainWindow::setMouseThrough(bool isThrough)
+{
+    m_mouseThrough = isThrough;
+    m_settings->setValue("Style/MouseThrough", m_mouseThrough);
+    
+    // 设置透明背景并防止鼠标穿透（通过设置极其微小的透明度）
+    // 0: 穿透, 1: 不穿透
+    int alpha = m_mouseThrough ? 0 : 1; 
+
+    QPalette pal = this->palette();
+    pal.setColor(QPalette::Window, QColor(100, 100, 100, alpha)); 
+    this->setPalette(pal);
 }
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)// 事件过滤器绑定到 viewport 上已拦截 wheel 事件使其滚动 scrollbar

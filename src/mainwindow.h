@@ -21,6 +21,8 @@
 #include <QPropertyAnimation>
 #include <QPointer>
 #include <QGraphicsDropShadowEffect>
+#include <iostream>
+#include <QGraphicsDropShadowEffect>
 #include "audiocontroller.h"
 #include "sessionrow.h"
 
@@ -66,6 +68,7 @@ private:
     QPointer<QPropertyAnimation> m_scrollAnim;
     int m_scrollTarget = 0;
     class SessionRow *m_focusedRow = nullptr;
+    bool m_mouseThrough = false;
 
 public:
     void initUi(); // 构建窗口 UI
@@ -81,6 +84,14 @@ public:
     void setWindowLevel(WindowLevel level); // 设置窗口层级
 
     void snapScrollToNearestRow(); // 滚动吸附
+
+    bool isMouseThrough() const { return m_mouseThrough; }
+    void setMouseThrough(bool isThrough);
+
+    bool isFrameless() const { return frameless; }
+    void setFrameless(bool isFrameless);
+    
+    WindowLevel getWindowLevel() const { return m_windowLevel; }
 
 public slots:
     void onSessionAdded(const AudioSessionData &data);

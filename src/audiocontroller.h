@@ -9,6 +9,9 @@
 #include <mmdeviceapi.h>
 #include <audiopolicy.h>
 #include <endpointvolume.h>
+#include <QFileInfo>
+#include <QSet>
+#include <QDebug>
 
 struct AudioSessionData {
     DWORD pid;
