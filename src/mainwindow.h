@@ -59,7 +59,7 @@ private:
 
     Ui::MainWindow *ui;
 
-    QWidget *createSessionRow(const AudioSessionData &data);
+    QWidget *createSessionRow(const AudioSessionData &sessionData);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -67,7 +67,6 @@ protected:
 private:
     QPointer<QPropertyAnimation> m_scrollAnim;
     int m_scrollTarget = 0;
-    class SessionRow *m_focusedRow = nullptr;
     bool m_mouseThrough = false;
 
 public:
@@ -94,7 +93,7 @@ public:
     WindowLevel getWindowLevel() const { return m_windowLevel; }
 
 public slots:
-    void onSessionAdded(const AudioSessionData &data);
+    void onSessionAdded(const AudioSessionData &sessionData);
     void onSessionRemoved(DWORD pid);
 
 signals:

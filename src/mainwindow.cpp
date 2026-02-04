@@ -230,19 +230,19 @@ void MainWindow::initWindowStyle()
 }
 
 
-void MainWindow::onSessionAdded(const AudioSessionData &data)
+void MainWindow::onSessionAdded(const AudioSessionData &sessionData)
 {
-    if (sessionMap.contains(data.pid))
+    if (sessionMap.contains(sessionData.pid))
         return;
 
-    QWidget *row = createSessionRow(data);
+    QWidget *row = createSessionRow(sessionData);
     int idx = ui->sessionLayout->count();
     if (!bottomSpacers.isEmpty())
     {
         idx = ui->sessionLayout->indexOf(bottomSpacers.first());
     }
     ui->sessionLayout->insertWidget(idx, row);
-    sessionMap.insert(data.pid, row);
+    sessionMap.insert(sessionData.pid, row);
 
     // Update Layout
     updateWindowGeometry();
@@ -327,9 +327,9 @@ void MainWindow::updateWindowGeometry()
     }
 }
 
-QWidget *MainWindow::createSessionRow(const AudioSessionData &data)
+QWidget *MainWindow::createSessionRow(const AudioSessionData &sessionData)
 {
-    auto *row = new SessionRow(data, rowWidth, rowHeight);
+    auto *row = new SessionRow(sessionData, rowWidth, rowHeight);
     connect(row, &SessionRow::volumeChanged, this, &MainWindow::volumeChanged);
     connect(row, &SessionRow::layoutRequest, this, &MainWindow::updateWindowGeometry);//ui更新发生内存泄漏
     return row;

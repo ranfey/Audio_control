@@ -4,6 +4,12 @@
 SessionRow::SessionRow(const AudioSessionData &data, int w, int h, QWidget *parent)
     : QWidget(parent), m_baseHeight(h), m_expandSize(h / 2), m_pid(data.pid)
 {
+    int fullWidth = w * 2; 
+    int idleWidth = int(fullWidth / kHoverScaleFactor);
+    int marginDelta = fullWidth - idleWidth;
+    m_idleLeftMargin = 10 + marginDelta;
+    m_leftMargin = m_idleLeftMargin;
+
     // 初始化基础属性
     this->setMinimumHeight(h);
     this->setMaximumHeight(h);
@@ -73,25 +79,22 @@ SessionRow::SessionRow(const AudioSessionData &data, int w, int h, QWidget *pare
         }
     }
 
-    QLabel *icon = new QLabel;
-    icon->setObjectName("sessionIcon");
-    icon->setFixedSize(64, 64);
-    icon->setPixmap(iconPixmap);
-    icon->setScaledContents(true);
-    icon->setStyleSheet(R"(
+    m_iconLabel = new QLabel;
+    m_iconLabel->setObjectName("sessionIcon");
+    m_iconLabel->setFixedSize(m_iconSize, m_iconSize);
+    m_iconLabel->setPixmap(iconPixmap);
+    m_iconLabel->setScaledContents(true);
+    m_iconLabel->setStyleSheet(R"(
         QLabel#sessionIcon {
             background: transparent;
             border-radius: 4px;
             padding: 2px;
             border: 2px solid transparent;
         }
-        QLabel#sessionIcon:hover {
-            border: 2px solid #ffaad4;
-        }
     )");
 
     layout->addWidget(slider, 1);
-    layout->addWidget(icon);
+    layout->addWidget(m_iconLabel);
 
     // [视觉效果] 边缘光晕阴影
     m_glowEffect = new QGraphicsDropShadowEffect(this);
@@ -113,6 +116,14 @@ SessionRow::SessionRow(const AudioSessionData &data, int w, int h, QWidget *pare
     m_animBottomMargin->setDuration(500);
     m_animBottomMargin->setEasingCurve(QEasingCurve::OutCubic);
 
+    m_animLeftMargin = new QPropertyAnimation(this, "leftMargin", this);
+    m_animLeftMargin->setDuration(500);
+    m_animLeftMargin->setEasingCurve(QEasingCurve::OutCubic);
+
+    m_animIconSize = new QPropertyAnimation(this, "iconSize", this);
+    m_animIconSize->setDuration(500);
+    m_animIconSize->setEasingCurve(QEasingCurve::OutCubic);
+
     m_animGlowRadius = new QPropertyAnimation(this, "glowRadius", this);
     m_animGlowRadius->setDuration(500);
     m_animGlowRadius->setEasingCurve(QEasingCurve::OutCubic);
@@ -125,6 +136,9 @@ SessionRow::SessionRow(const AudioSessionData &data, int w, int h, QWidget *pare
     connect(m_animHeight, &QPropertyAnimation::valueChanged, this, &SessionRow::layoutRequest);
     connect(m_animTopMargin, &QPropertyAnimation::valueChanged, this, &SessionRow::layoutRequest);
     connect(m_animBottomMargin, &QPropertyAnimation::valueChanged, this, &SessionRow::layoutRequest);
+    connect(m_animLeftMargin, &QPropertyAnimation::valueChanged, this, [this](){ update(); });
+    connect(m_animIconSize, &QPropertyAnimation::valueChanged, this, [this](){ update(); });
+
     QTimer::singleShot(0, this, [this](){
         emit layoutRequest();
     });
@@ -157,8 +171,20 @@ void SessionRow::setBottomMargin(int m) {
     updateMargins();
 }
 
+int SessionRow::leftMargin() const { return m_leftMargin; }
+void SessionRow::setLeftMargin(int m) {
+    m_leftMargin = m;
+    updateMargins();
+}
+
+int SessionRow::iconSize() const { return m_iconSize; }
+void SessionRow::setIconSize(int s) {
+    m_iconSize = s;
+    if (m_iconLabel) m_iconLabel->setFixedSize(s, s);
+}
+
 void SessionRow::updateMargins() {
-    setContentsMargins(10, m_topMargin, 10, m_bottomMargin);
+    setContentsMargins(m_leftMargin, m_topMargin, 10, m_bottomMargin);
 }
 
 void SessionRow::enterEvent(QEvent *event) {
@@ -178,6 +204,18 @@ void SessionRow::enterEvent(QEvent *event) {
     m_animBottomMargin->setStartValue(bottomMargin());
     m_animBottomMargin->setEndValue(m_expandSize);
     m_animBottomMargin->start();
+
+    // 左边距动画 - 恢复到10 (填充)
+    m_animLeftMargin->stop();
+    m_animLeftMargin->setStartValue(leftMargin());
+    m_animLeftMargin->setEndValue(10);
+    m_animLeftMargin->start();
+
+    // 图标动画 - 放大
+    m_animIconSize->stop();
+    m_animIconSize->setStartValue(iconSize());
+    m_animIconSize->setEndValue(int(defaultIconSize * kHoverScaleFactor));
+    m_animIconSize->start();
 
     // 光晕动画
     m_animGlowRadius->stop();
@@ -210,6 +248,18 @@ void SessionRow::leaveEvent(QEvent *event) {
     m_animBottomMargin->setStartValue(bottomMargin());
     m_animBottomMargin->setEndValue(0);
     m_animBottomMargin->start();
+
+    // 恢复左边距 - 到计算好的Idle值
+    m_animLeftMargin->stop();
+    m_animLeftMargin->setStartValue(leftMargin());
+    m_animLeftMargin->setEndValue(m_idleLeftMargin); 
+    m_animLeftMargin->start();
+
+    // 恢复图标
+    m_animIconSize->stop();
+    m_animIconSize->setStartValue(iconSize());
+    m_animIconSize->setEndValue(defaultIconSize);
+    m_animIconSize->start();
 
     // 关闭光晕
     m_animGlowRadius->stop();

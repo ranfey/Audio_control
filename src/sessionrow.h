@@ -26,6 +26,8 @@ class SessionRow : public QWidget
     Q_PROPERTY(QColor glowColor READ glowColor WRITE setGlowColor)
     Q_PROPERTY(int topMargin READ topMargin WRITE setTopMargin)
     Q_PROPERTY(int bottomMargin READ bottomMargin WRITE setBottomMargin)
+    Q_PROPERTY(int leftMargin READ leftMargin WRITE setLeftMargin)
+    Q_PROPERTY(int iconSize READ iconSize WRITE setIconSize)
 
 public:
     explicit SessionRow(const AudioSessionData &data, int w, int h, QWidget *parent = nullptr);
@@ -45,6 +47,12 @@ public:
     int bottomMargin() const;
     void setBottomMargin(int m);
 
+    int leftMargin() const;
+    void setLeftMargin(int m);
+
+    int iconSize() const;
+    void setIconSize(int s);
+
     void updateMargins();
 
 signals:
@@ -60,11 +68,19 @@ private:
     int m_expandSize;
     int m_topMargin = 0;
     int m_bottomMargin = 0;
+    int m_leftMargin = 10;
+    int m_idleLeftMargin = 10;
+    int defaultIconSize = 64; // 默认图标大小
+    int m_iconSize = defaultIconSize;
+    double kHoverScaleFactor = 1.1;//放大倍率
     DWORD m_pid;
     QGraphicsDropShadowEffect *m_glowEffect;
+    QLabel *m_iconLabel = nullptr; 
     QPropertyAnimation *m_animHeight;
     QPropertyAnimation *m_animTopMargin;
     QPropertyAnimation *m_animBottomMargin;
+    QPropertyAnimation *m_animLeftMargin;
     QPropertyAnimation *m_animGlowRadius;
     QPropertyAnimation *m_animGlowColor;
+    QPropertyAnimation *m_animIconSize;
 };
